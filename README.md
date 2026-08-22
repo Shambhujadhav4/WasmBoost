@@ -18,7 +18,7 @@ A full-stack machine learning web application that enables users to upload datas
 *   📊 **Automated Dataset Analysis:** Upload CSV/TSV files and get automatic task detection (classification vs. regression), data profiling, and target column recommendations.
 *   🧠 **Intelligent Model Recommendation:** Automatically benchmarks models (Random Forest, Gradient Boosting, Logistic/Linear Regression) using dual-metric evaluation (F1-weighted + Accuracy, or R²).
 *   🛠️ **Interactive Preprocessing Pipeline:** Visually handle missing values, encode categorical data, scale features, and detect/remove outliers before training.
-*   ⚙️ **Model Training & Artifacts:** Train models with configurable cross-validation and download the trained `.pkl` models for production use.
+*   ⚙️ **Model Training & Secure Artifacts:** Train models with configurable cross-validation and download secure `.skops` (AST allowlist-validated Python model) or high-performance `.onnx` models for production inference.
 *   📈 **Rich Visualizations:** Interactive Plotly charts including missing value heatmaps, feature distributions, confusion matrices, ROC curves, and feature importance.
 *   💾 **Session Management:** Secure, `localStorage`-based session persistence for managing multiple data science projects seamlessly.
 

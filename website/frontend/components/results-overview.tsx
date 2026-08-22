@@ -206,7 +206,8 @@ export function ResultsOverview({
     typeof snapshot?.model_results?.metric_average === "string"
       ? snapshot.model_results.metric_average
       : null;
-  const artifactUrl = projectId ? getModelArtifactUrl(projectId) : null;
+  const skopsArtifactUrl = projectId ? getModelArtifactUrl(projectId, "skops") : null;
+  const onnxArtifactUrl = projectId ? getModelArtifactUrl(projectId, "onnx") : null;
 
   return (
     <section className="stack results-page">
@@ -300,18 +301,138 @@ export function ResultsOverview({
             </div>
           ) : null}
 
-          {snapshot.artifact_available && artifactUrl ? (
-            <div className="panel split-panel">
-              <div>
-                <h2>Model artifact</h2>
-                <p className="muted">
-                  Download the saved model artifact for this trained run.
+          {snapshot.artifact_available ? (
+            <div className="panel">
+              <div style={{ marginBottom: "1.25rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+                  <h2 style={{ margin: 0 }}>Model Export &amp; Serialization</h2>
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: "999px",
+                      background: "rgba(15, 118, 110, 0.15)",
+                      color: "var(--accent)",
+                      border: "1px solid rgba(15, 118, 110, 0.3)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Enterprise Security
+                  </span>
+                </div>
+                <p className="muted" style={{ margin: 0 }}>
+                  Choose your secure model distribution format. Arbitrary Code Execution (ACE) risks from legacy pickle are fully eliminated.
                 </p>
               </div>
-              <div className="button-row">
-                <a href={artifactUrl} className="button button-primary">
-                  Download model artifact
-                </a>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: "16px",
+                }}
+              >
+                {/* skops card */}
+                <div
+                  style={{
+                    padding: "20px",
+                    borderRadius: "18px",
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-strong)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <strong style={{ fontSize: "1.05rem" }}>Secure Python Model (.skops)</strong>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: "999px",
+                          background: "#e6f4ea",
+                          color: "#137333",
+                        }}
+                      >
+                        Safe Python AST
+                      </span>
+                    </div>
+                    <p className="muted" style={{ fontSize: "0.88rem", lineHeight: 1.5, margin: 0 }}>
+                      Type allowlist-validated AST &amp; JSON archive. Replaces Python pickle with zero arbitrary code execution risk for Python environments and pipelines.
+                    </p>
+                    {snapshot.skops_artifact_filename && (
+                      <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "8px", fontFamily: "monospace" }}>
+                        📁 {snapshot.skops_artifact_filename}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <a
+                      href={skopsArtifactUrl ?? "#"}
+                      download
+                      className="button button-primary"
+                      style={{ width: "100%", textAlign: "center" }}
+                    >
+                      Export as Secure Python Model (.skops)
+                    </a>
+                  </div>
+                </div>
+
+                {/* ONNX card */}
+                <div
+                  style={{
+                    padding: "20px",
+                    borderRadius: "18px",
+                    border: "1px solid var(--line)",
+                    background: "var(--surface-strong)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <strong style={{ fontSize: "1.05rem" }}>Production Inference (.onnx)</strong>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: "999px",
+                          background: "#e8f0fe",
+                          color: "#1a73e8",
+                        }}
+                      >
+                        Cross-Platform
+                      </span>
+                    </div>
+                    <p className="muted" style={{ fontSize: "0.88rem", lineHeight: 1.5, margin: 0 }}>
+                      Open Neural Network Exchange format for high-throughput production serving with ONNX Runtime across Python, C++, Go, Java, Rust, and edge runtimes.
+                    </p>
+                    {snapshot.onnx_artifact_filename && (
+                      <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: "8px", fontFamily: "monospace" }}>
+                        📁 {snapshot.onnx_artifact_filename}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <a
+                      href={onnxArtifactUrl ?? "#"}
+                      download
+                      className="button button-secondary"
+                      style={{ width: "100%", textAlign: "center" }}
+                    >
+                      Export for Production Inference (.onnx)
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}

@@ -43,6 +43,10 @@ class ProjectSnapshot(BaseModel):
     trained_task_type: str | None = None
     artifact_available: bool = False
     artifact_filename: str | None = None
+    skops_artifact_available: bool = False
+    onnx_artifact_available: bool = False
+    skops_artifact_filename: str | None = None
+    onnx_artifact_filename: str | None = None
 
 
 class ModelRecommendation(BaseModel):

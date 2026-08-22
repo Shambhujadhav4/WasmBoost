@@ -56,6 +56,10 @@ website/frontend/build-text.log
 *.seed
 *.tmp
 *.temp
+models/
+website/backend/models/
+uploads/
+website/backend/uploads/
 
 # Personal local datasets (do not push)
 healthcare_real_time_dataset.csv

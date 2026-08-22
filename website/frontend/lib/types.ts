@@ -36,6 +36,10 @@ export type ProjectSnapshot = {
   trained_task_type: string | null;
   artifact_available: boolean;
   artifact_filename: string | null;
+  skops_artifact_available?: boolean;
+  onnx_artifact_available?: boolean;
+  skops_artifact_filename?: string | null;
+  onnx_artifact_filename?: string | null;
 };
 
 export type FeatureImportanceRow = {

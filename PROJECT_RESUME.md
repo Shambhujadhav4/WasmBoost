@@ -5,7 +5,7 @@ ML Dashboard is a full-stack machine learning web application that enables users
 
 **Live Deployment:**
 - Frontend: https://ml-dashboard-livid-pi.vercel.app
-- Backend: https://ml-dashboard-vqs0.onrender.com *(Currently on Render, migrating to DigitalOcean VPS)*
+- Backend: https://ml-dashboard-vqs0.onrender.com
 - GitHub: https://github.com/Shambhujadhav4/ML_Dashboard
 
 ---
@@ -26,7 +26,7 @@ ML Dashboard is a full-stack machine learning web application that enables users
 - **Data Processing**: pandas, numpy
 - **CORS Middleware**: FastAPI with regex-based origin matching for multi-environment support
 - **Database**: Session-based file storage (CSV datasets)
-- **Deployment**: DigitalOcean VPS (Docker, Nginx) / Previously Render
+- **Deployment**: Render
 
 ### Architecture
 - **Pattern**: Monorepo structure (website/backend + website/frontend)
@@ -119,15 +119,13 @@ ML Dashboard is a full-stack machine learning web application that enables users
 - Environment Variables:
   - `NEXT_PUBLIC_API_BASE_URL`: Backend API base URL (https://ml-dashboard-vqs0.onrender.com/api)
 
-### Backend Deployment (DigitalOcean VPS & Docker)
-- Root Directory: `website/`
-- Build/Run Command: `docker-compose up --build -d`
-- Architecture: FastAPI application reverse-proxied through Nginx
+### Render (Backend)
+- Root Directory: `website/backend`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn app.main:app --host 0.0.0.0 --port 10000`
 - Environment Variables:
   - `DATAPILOT_CORS_ORIGINS`: Allowed frontend origins (https://ml-dashboard-livid-pi.vercel.app)
   - `DATAPILOT_CORS_ORIGIN_REGEX`: Regex for dynamic Vercel domains (https://.*\.vercel\.app)
-
-*(Note: Initially prototyped on Render, now modernized for a production environment using Docker on a dedicated VPS to eliminate cold starts and improve performance).*
 
 ### Git Management
 - Comprehensive .gitignore protecting:
@@ -161,7 +159,7 @@ ML Dashboard is a full-stack machine learning web application that enables users
 ### 4. Monorepo Build Path Resolution
 **Problem**: Vercel couldn't find package.json; attempted cd commands in buildCommand caused path parsing errors.
 **Solution**: Used explicit Root Directory setting in Vercel UI (website/frontend) rather than relying on vercel.json paths.
-**Impact**: Monorepo structure properly supported across both Vercel and the custom Docker deployment.
+**Impact**: Monorepo structure properly supported across both Vercel and Render.
 
 ### 5. ML Model Benchmarking Accuracy
 **Problem**: Low accuracy (~36%) on healthcare dataset confused users about model quality.
@@ -224,8 +222,7 @@ ML Dashboard is a full-stack machine learning web application that enables users
 - Environment-based configuration
 - CORS troubleshooting
 - Git workflow and version control
-- Vercel, Render, and DigitalOcean VPS deployment
-- Docker & Nginx containerization
+- Vercel and Render deployment
 
 ### Problem Solving
 - Debugging production issues (CORS, routing, configuration)
@@ -263,6 +260,22 @@ ML Dashboard is a full-stack machine learning web application that enables users
 5. **UX-driven feature development** (metric comparison, loading states, animations)
 6. **Data quality analysis** and its impact on model performance
 7. **Automated ML workflows** (recommendation engine, preprocessing pipelines)
+
+---
+
+## How to Present on Resume
+
+### Short Version (1-2 lines)
+"Built full-stack ML Dashboard web application with FastAPI backend and Next.js frontend, enabling users to upload datasets, automatically preprocess data, train ML models, and receive intelligent model recommendations with dual-metric benchmarking. Deployed on Vercel and Render."
+
+### Medium Version (3-4 bullets)
+- Designed and deployed full-stack ML web application (FastAPI + Next.js) handling dataset uploads, automated preprocessing, and intelligent model recommendations using scikit-learn
+- Implemented dual-metric recommendation engine (F1-weighted + Accuracy) with stratified cross-validation for robust model benchmarking across classification/regression tasks
+- Built interactive preprocessing pipeline and visualization dashboard with 9+ chart types (Plotly) for exploratory data analysis
+- Solved production CORS/deployment issues using regex-based origin matching and monorepo configuration optimization, enabling seamless Vercel-to-Render communication
+
+### Long Version (Full description)
+See "Project Overview" and "Key Features" sections above.
 
 ---
 

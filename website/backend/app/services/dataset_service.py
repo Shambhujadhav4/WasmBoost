@@ -27,6 +27,10 @@ class ProjectSession:
     task_type: str | None = None
     artifact_path: str | None = None
     artifact_filename: str | None = None
+    artifact_skops_path: str | None = None
+    artifact_skops_filename: str | None = None
+    artifact_onnx_path: str | None = None
+    artifact_onnx_filename: str | None = None
 
 
 class DatasetStore:
@@ -68,6 +72,10 @@ class DatasetStore:
         session.task_type = None
         session.artifact_path = None
         session.artifact_filename = None
+        session.artifact_skops_path = None
+        session.artifact_skops_filename = None
+        session.artifact_onnx_path = None
+        session.artifact_onnx_filename = None
 
     def reset_to_raw(self, session: ProjectSession) -> ProjectSession:
         session.processed_data = session.raw_data.copy()
@@ -94,14 +102,20 @@ class DatasetStore:
         )
 
     def build_snapshot(self, session: ProjectSession) -> ProjectSnapshot:
+        has_skops = bool(session.artifact_skops_path)
+        has_onnx = bool(session.artifact_onnx_path)
         return ProjectSnapshot(
             summary=self.build_summary(session),
             target_column=session.target_column,
             feature_columns=session.feature_columns.copy(),
             model_results=session.model_results,
             trained_task_type=session.task_type,
-            artifact_available=bool(session.artifact_path),
-            artifact_filename=session.artifact_filename,
+            artifact_available=bool(session.artifact_path or has_skops or has_onnx),
+            artifact_filename=session.artifact_skops_filename or session.artifact_filename,
+            skops_artifact_available=has_skops,
+            onnx_artifact_available=has_onnx,
+            skops_artifact_filename=session.artifact_skops_filename,
+            onnx_artifact_filename=session.artifact_onnx_filename,
         )
 
 

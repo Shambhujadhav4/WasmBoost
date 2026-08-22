@@ -16,8 +16,11 @@ type UploadParams = {
   headerRow: number;
 };
 
-export function getModelArtifactUrl(projectId: string): string {
-  return `${API_BASE_URL}/train/${projectId}/artifact`;
+export function getModelArtifactUrl(
+  projectId: string,
+  format: "skops" | "onnx" = "skops",
+): string {
+  return `${API_BASE_URL}/train/${projectId}/artifact?format=${format}`;
 }
 
 export async function uploadFile({
