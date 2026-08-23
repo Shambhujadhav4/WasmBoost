@@ -268,6 +268,8 @@ export async function dispatchTrainTask(params: {
   nTrials?: number;
   pruningEnabled?: boolean;
   tuningMetric?: string;
+  preprocessedData?: Record<string, unknown>[];
+  datasetCsv?: string;
 }): Promise<TrainTaskResponse> {
   return postJson<TrainTaskResponse>(`${API_BASE_URL}/train`, {
     project_id: params.projectId,
@@ -282,6 +284,8 @@ export async function dispatchTrainTask(params: {
     n_trials: params.nTrials ?? 15,
     pruning_enabled: params.pruningEnabled ?? true,
     tuning_metric: params.tuningMetric ?? null,
+    preprocessed_data: params.preprocessedData ?? null,
+    dataset_csv: params.datasetCsv ?? null,
   });
 }
 
@@ -312,6 +316,8 @@ export async function trainModelWithTelemetry(
     nTrials?: number;
     pruningEnabled?: boolean;
     tuningMetric?: string;
+    preprocessedData?: Record<string, unknown>[];
+    datasetCsv?: string;
   },
   onTelemetry?: (event: TelemetryEvent) => void,
 ): Promise<ProjectSnapshot> {

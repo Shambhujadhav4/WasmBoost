@@ -3,19 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { fetchDatasetInsights, fetchWorkflowRecommendation, uploadFile } from "@/lib/api";
 import { ACTIVE_PROJECT_STORAGE_KEY } from "@/lib/project-session";
+import { pyodideClient } from "@/lib/pyodide-client";
+import { usePyodide } from "@/lib/pyodide-context";
 import type { ColumnInfoRow, DatasetInsights, DatasetSummary, WorkflowRecommendation } from "@/lib/types";
 
 import { DataPreviewTable } from "./data-preview-table";
 
 export function UploadForm() {
   const router = useRouter();
+  const { isReady: isPyodideReady, statusMessage: pyodideMsg } = usePyodide();
   const [file, setFile] = useState<File | null>(null);
   const [separator, setSeparator] = useState(",");
   const [encoding, setEncoding] = useState("utf-8");
   const [headerRow, setHeaderRow] = useState(0);
-  const [status, setStatus] = useState("Upload a CSV or image to create a project session.");
+  const [status, setStatus] = useState("Select a CSV file to load into client-side WebAssembly (Pyodide).");
   const [summary, setSummary] = useState<DatasetSummary | null>(null);
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
   const [recommendation, setRecommendation] = useState<WorkflowRecommendation | null>(null);
@@ -34,18 +36,6 @@ export function UploadForm() {
       : "N/A";
   }
 
-  async function loadRecommendation(projectId: string) {
-    setIsGeneratingRecommendation(true);
-    try {
-      const nextRecommendation = await fetchWorkflowRecommendation(projectId);
-      setRecommendation(nextRecommendation);
-    } catch {
-      setRecommendation(null);
-    } finally {
-      setIsGeneratingRecommendation(false);
-    }
-  }
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!file) {
@@ -54,34 +44,39 @@ export function UploadForm() {
     }
 
     setIsSubmitting(true);
-    setStatus("Uploading dataset...");
+    setStatus("Reading file into browser WebAssembly memory...");
 
     try {
-      const response = await uploadFile({
-        file,
-        separator,
-        encoding,
-        headerRow,
-      });
+      const projectId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID().replace(/-/g, "")
+          : `proj_${Date.now()}`;
 
-      window.localStorage.setItem(
-        ACTIVE_PROJECT_STORAGE_KEY,
-        response.project_id,
+      const text = await file.text();
+
+      setStatus("Profiling dataset in Python WebAssembly (NumPy + Pandas)...");
+      const result = await pyodideClient.loadCsv(
+        projectId,
+        text,
+        file.name,
+        separator,
+        headerRow
       );
-      setSummary(response);
-      const nextInsights = await fetchDatasetInsights(response.project_id);
-      setInsights(nextInsights);
-      setStatus("Generating recommended workflow and best model...");
-      await loadRecommendation(response.project_id);
-      setStatus("Dataset uploaded successfully. Review the summary below, then continue to exploration or preprocessing.");
+
+      window.localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, projectId);
+      setSummary(result.summary);
+      setInsights(result.insights);
+      setRecommendation(result.recommendations);
+      setStatus(
+        "⚡ Dataset profiled 100% client-side via Pyodide WebAssembly. Review the summary below, then proceed to Exploration, Preprocessing, or Training."
+      );
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Upload failed unexpectedly.";
+        error instanceof Error ? error.message : "Upload and WebAssembly profiling failed.";
       setStatus(message);
       setSummary(null);
       setInsights(null);
       setRecommendation(null);
-      setIsGeneratingRecommendation(false);
     } finally {
       setIsSubmitting(false);
     }

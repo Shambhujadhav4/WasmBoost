@@ -28,8 +28,14 @@ import {
   REGRESSION_MODELS,
 } from "@/lib/model-options";
 import { ACTIVE_PROJECT_STORAGE_KEY } from "@/lib/project-session";
-import type { FeatureRankingItem, MutualInformationItem, ProjectSnapshot, TelemetryEvent } from "@/lib/types";
-
+import { pyodideClient } from "@/lib/pyodide-client";
+import type {
+  DatasetSummary,
+  FeatureRankingItem,
+  MutualInformationItem,
+  ProjectSnapshot,
+  TelemetryEvent,
+} from "@/lib/types";
 
 import { DataPreviewTable } from "./data-preview-table";
 import { MetricsCards } from "./metrics-cards";
@@ -183,32 +189,57 @@ export function ProjectDashboard({
     let cancelled = false;
     setIsLoading(true);
     setError(null);
-    setStatus("Loading project snapshot...");
+    setStatus("Loading project session...");
 
-    Promise.all([fetchProjectSnapshot(resolved), fetchVisualizationMetadata(resolved)])
-      .then(([projectSnapshot, metadata]) => {
-        if (cancelled) {
+    (async () => {
+      // 1. Check client-side WebAssembly Pyodide session first
+      try {
+        const wasmSummary = await pyodideClient.getSnapshot(resolved);
+        const wasmMeta = await pyodideClient.getVizMetadata(resolved);
+        if (!cancelled && wasmSummary && wasmSummary.columns > 0) {
+          setSnapshot({
+            summary: wasmSummary,
+            target_column: null,
+            feature_columns: wasmSummary.column_names,
+            model_results: null,
+            trained_task_type: null,
+            artifact_available: false,
+            artifact_filename: null,
+          });
+          setVizMeta(wasmMeta);
+          setStatus("⚡ Active dataset loaded from browser WebAssembly (Pyodide) session.");
+          setIsLoading(false);
           return;
         }
-        setSnapshot(projectSnapshot);
-        setVizMeta(metadata);
-        setStatus("Project loaded from the FastAPI backend.");
-      })
-      .catch((requestError) => {
-        if (cancelled) {
-          return;
+      } catch {
+        // Fallback to server fetch if not in Pyodide memory
+      }
+
+      // 2. Fallback to FastAPI server fetch
+      try {
+        const [projectSnapshot, metadata] = await Promise.all([
+          fetchProjectSnapshot(resolved),
+          fetchVisualizationMetadata(resolved),
+        ]);
+        if (!cancelled) {
+          setSnapshot(projectSnapshot);
+          setVizMeta(metadata);
+          setStatus("Project loaded from the FastAPI backend.");
         }
-        const message = requestError instanceof Error ? requestError.message : "Unable to load the project.";
-        setSnapshot(null);
-        setVizMeta(null);
-        setError(message);
-        setStatus("The dashboard could not load the requested project.");
-      })
-      .finally(() => {
+      } catch (requestError) {
+        if (!cancelled) {
+          const message = requestError instanceof Error ? requestError.message : "Unable to load the project.";
+          setSnapshot(null);
+          setVizMeta(null);
+          setError(message);
+          setStatus("The dashboard could not load the requested project.");
+        }
+      } finally {
         if (!cancelled) {
           setIsLoading(false);
         }
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -340,19 +371,54 @@ export function ProjectDashboard({
     [snapshot],
   );
 
-  async function runMutation(action: () => Promise<ProjectSnapshot>, successMessage: string) {
+  async function runMutation(
+    action: () => Promise<ProjectSnapshot | DatasetSummary | { summary: DatasetSummary }>,
+    successMessage: string
+  ) {
     if (!projectId) {
       return false;
     }
     setIsMutating(true);
     setError(null);
-    setStatus("Submitting request...");
+    setStatus("Processing dataset in browser WebAssembly (Pyodide)...");
     try {
-      const nextSnapshot = await action();
-      const nextMeta = await fetchVisualizationMetadata(projectId);
+      const res = await action();
+      let nextSnapshot: ProjectSnapshot;
+      if ("summary" in res && "rows" in (res as any).summary) {
+        nextSnapshot = {
+          summary: (res as any).summary,
+          target_column: snapshot?.target_column ?? null,
+          feature_columns: snapshot?.feature_columns ?? (res as any).summary.column_names,
+          model_results: snapshot?.model_results ?? null,
+          trained_task_type: snapshot?.trained_task_type ?? null,
+          artifact_available: snapshot?.artifact_available ?? false,
+          artifact_filename: snapshot?.artifact_filename ?? null,
+        };
+      } else if ("rows" in (res as any)) {
+        nextSnapshot = {
+          summary: res as unknown as DatasetSummary,
+          target_column: snapshot?.target_column ?? null,
+          feature_columns: snapshot?.feature_columns ?? (res as any).column_names,
+          model_results: snapshot?.model_results ?? null,
+          trained_task_type: snapshot?.trained_task_type ?? null,
+          artifact_available: snapshot?.artifact_available ?? false,
+          artifact_filename: snapshot?.artifact_filename ?? null,
+        };
+      } else {
+        nextSnapshot = res as ProjectSnapshot;
+      }
+
+      // Sync metadata
+      let nextMeta: VizMeta;
+      try {
+        nextMeta = await pyodideClient.getVizMetadata(projectId);
+      } catch {
+        nextMeta = await fetchVisualizationMetadata(projectId);
+      }
+
       setSnapshot(nextSnapshot);
       setVizMeta(nextMeta);
-      setStatus(successMessage);
+      setStatus(`⚡ ${successMessage}`);
       return true;
     } catch (mutationError) {
       const message = mutationError instanceof Error ? mutationError.message : "Request failed unexpectedly.";
@@ -372,9 +438,25 @@ export function ProjectDashboard({
     setIsTraining(true);
     setTrainingProgress(5);
     setTrainingStage("queued");
-    setTrainingMessage("Submitting training job to background worker queue...");
-    setTrainingLogs([`[0%] Dispatched training request for ${selectedModel}...`]);
+    setTrainingMessage("Exporting preprocessed dataset from WebAssembly runtime for backend handoff...");
+    setTrainingLogs([`[0%] Initializing backend handoff for ${selectedModel}...`]);
     setError(null);
+
+    let preprocessedData: Record<string, unknown>[] | undefined = undefined;
+    let datasetCsv: string | undefined = undefined;
+    try {
+      const exported = await pyodideClient.exportPreprocessedDataset(projectId);
+      if (exported && exported.records && exported.records.length > 0) {
+        preprocessedData = exported.records;
+        datasetCsv = exported.csv_text;
+        setTrainingLogs((prev) => [
+          ...prev,
+          `[5%] Exported ${exported.rows} rows × ${exported.columns.length} columns from Pyodide WebAssembly for Celery queue...`,
+        ]);
+      }
+    } catch (exportErr) {
+      console.warn("Pyodide export skipped (using server session if exists):", exportErr);
+    }
 
     try {
       const nextSnapshot = await trainModelWithTelemetry(
@@ -390,6 +472,8 @@ export function ProjectDashboard({
           useHyperparameterTuning: useAdvancedTuning,
           nTrials: optunaTrials,
           pruningEnabled: optunaPruning,
+          preprocessedData,
+          datasetCsv,
         },
         (event: TelemetryEvent) => {
           setTrainingProgress(event.progress);
@@ -402,7 +486,12 @@ export function ProjectDashboard({
         },
       );
 
-      const nextMeta = await fetchVisualizationMetadata(projectId);
+      let nextMeta: VizMeta;
+      try {
+        nextMeta = await pyodideClient.getVizMetadata(projectId);
+      } catch {
+        nextMeta = await fetchVisualizationMetadata(projectId);
+      }
       setSnapshot(nextSnapshot);
       setVizMeta(nextMeta);
       setTrainingProgress(100);
@@ -532,7 +621,19 @@ export function ProjectDashboard({
                       <p className="eyebrow">Drop Columns</p>
                       <p className="preprocess-helper">Select columns you want to remove from the dataset.</p>
                     </div>
-                    <PreprocessCard title="Columns to drop" buttonLabel="Drop Selected Columns" onSubmit={() => projectId && dropSelection.length ? runMutation(() => dropColumns({ projectId, columns: dropSelection }), `Dropped ${dropSelection.length} column(s).`) : Promise.resolve()} disabled={!projectId || !dropSelection.length || isMutating}>
+                    <PreprocessCard
+                      title="Columns to drop"
+                      buttonLabel="Drop Selected Columns"
+                      onSubmit={() =>
+                        projectId && dropSelection.length
+                          ? runMutation(
+                              () => pyodideClient.dropColumns(projectId, dropSelection),
+                              `Dropped ${dropSelection.length} column(s).`
+                            )
+                          : Promise.resolve()
+                      }
+                      disabled={!projectId || !dropSelection.length || isMutating}
+                    >
                       <label className="field">
                         <span>Columns to drop</span>
                         <MultiSelectDropdown
@@ -549,7 +650,25 @@ export function ProjectDashboard({
                 {activePreprocessAction === "missing" ? (
                   <div className="preprocess-action-card">
                     <div className="status success-banner">✅ No missing values in the current dataset!</div>
-                    <PreprocessCard title="Strategy" buttonLabel="Apply Missing Value Treatment" onSubmit={() => projectId ? runMutation(() => handleMissingValues({ projectId, strategy: missingStrategy, columns: missingColumns, fillValue: missingStrategy === "custom" ? customFillValue : undefined }), `Missing-value strategy "${missingStrategy}" applied successfully.`) : Promise.resolve()} disabled={!projectId || isMutating}>
+                    <PreprocessCard
+                      title="Strategy"
+                      buttonLabel="Apply Missing Value Treatment"
+                      onSubmit={() =>
+                        projectId
+                          ? runMutation(
+                              () =>
+                                pyodideClient.handleMissing(
+                                  projectId,
+                                  missingStrategy,
+                                  missingColumns,
+                                  Number(customFillValue) || 0
+                                ),
+                              `Missing-value strategy "${missingStrategy}" applied successfully.`
+                            )
+                          : Promise.resolve()
+                      }
+                      disabled={!projectId || isMutating}
+                    >
                       <div className="field-grid field-grid-two">
                         <label className="field">
                           <span>Strategy</span>
@@ -585,7 +704,24 @@ export function ProjectDashboard({
                 {activePreprocessAction === "encoding" ? (
                   <div className="preprocess-action-card">
                     <div className="status info-banner">Categorical columns detected: {categoricalColumns.join(", ")}</div>
-                    <PreprocessCard title="Encoding method" buttonLabel="Apply Encoding" onSubmit={() => projectId ? runMutation(() => encodeCategorical({ projectId, method: encodingMethod, columns: encodingColumns }), `Encoding method "${encodingMethod}" applied successfully.`) : Promise.resolve()} disabled={!projectId || isMutating}>
+                    <PreprocessCard
+                      title="Encoding method"
+                      buttonLabel="Apply Encoding"
+                      onSubmit={() =>
+                        projectId
+                          ? runMutation(
+                              () =>
+                                pyodideClient.encodeCategoricals(
+                                  projectId,
+                                  encodingMethod,
+                                  encodingColumns
+                                ),
+                              `Encoding method "${encodingMethod}" applied successfully.`
+                            )
+                          : Promise.resolve()
+                      }
+                      disabled={!projectId || isMutating}
+                    >
                       <div className="field-grid field-grid-two">
                         <label className="field">
                           <span>Encoding method</span>
@@ -610,7 +746,24 @@ export function ProjectDashboard({
 
                 {activePreprocessAction === "scaling" ? (
                   <div className="preprocess-action-card">
-                    <PreprocessCard title="Scaling method" buttonLabel="Apply Scaling" onSubmit={() => projectId ? runMutation(() => scaleFeatures({ projectId, method: scalingMethod, columns: scalingColumns }), `Scaling method "${scalingMethod}" applied successfully.`) : Promise.resolve()} disabled={!projectId || isMutating}>
+                    <PreprocessCard
+                      title="Scaling method"
+                      buttonLabel="Apply Scaling"
+                      onSubmit={() =>
+                        projectId
+                          ? runMutation(
+                              () =>
+                                pyodideClient.scaleNumeric(
+                                  projectId,
+                                  scalingMethod,
+                                  scalingColumns
+                                ),
+                              `Scaling method "${scalingMethod}" applied successfully.`
+                            )
+                          : Promise.resolve()
+                      }
+                      disabled={!projectId || isMutating}
+                    >
                       <div className="field-grid field-grid-two">
                         <label className="field">
                           <span>Scaling method</span>
@@ -636,7 +789,25 @@ export function ProjectDashboard({
 
                 {activePreprocessAction === "outliers" ? (
                   <div className="preprocess-action-card">
-                    <PreprocessCard title="Method" buttonLabel="Handle Outliers" onSubmit={() => projectId ? runMutation(() => handleOutliers({ projectId, method: outlierMethod, columns: outlierColumns, threshold: outlierThreshold }), `Outlier method "${outlierMethod}" applied successfully.`) : Promise.resolve()} disabled={!projectId || isMutating}>
+                    <PreprocessCard
+                      title="Method"
+                      buttonLabel="Handle Outliers"
+                      onSubmit={() =>
+                        projectId
+                          ? runMutation(
+                              () =>
+                                pyodideClient.handleOutliers(
+                                  projectId,
+                                  outlierMethod,
+                                  outlierColumns,
+                                  outlierThreshold
+                                ),
+                              `Outlier method "${outlierMethod}" applied successfully.`
+                            )
+                          : Promise.resolve()
+                      }
+                      disabled={!projectId || isMutating}
+                    >
                       <div className="field-grid field-grid-three">
                         <label className="field">
                           <span>Method</span>
@@ -763,12 +934,23 @@ export function ProjectDashboard({
                             setIsComputingMi(true);
                             setError(null);
                             try {
-                              const res = await fetchMutualInformation({
-                                projectId,
-                                targetColumn: fsTargetColumn,
-                              });
-                              setFsMiScores(res.scores);
-                              setStatus(`Computed Mutual Information for ${res.scores.length} features.`);
+                              let scores: MutualInformationItem[];
+                              try {
+                                scores = await pyodideClient.computeMutualInformation(
+                                  projectId,
+                                  fsTargetColumn,
+                                  availableFeatures,
+                                  taskType
+                                );
+                              } catch {
+                                const res = await fetchMutualInformation({
+                                  projectId,
+                                  targetColumn: fsTargetColumn,
+                                });
+                                scores = res.scores;
+                              }
+                              setFsMiScores(scores);
+                              setStatus(`Computed Mutual Information for ${scores.length} features.`);
                             } catch (err) {
                               const msg = err instanceof Error ? err.message : "Failed to compute MI scores.";
                               setError(msg);
@@ -777,7 +959,7 @@ export function ProjectDashboard({
                             }
                           }}
                         >
-                          {isComputingMi ? "⏳ Computing MI dependency scores..." : "🔍 Calculate Mutual Information Scores"}
+                          {isComputingMi ? "⏳ Computing MI dependency scores in WebAssembly..." : "🔍 Calculate Mutual Information Scores"}
                         </button>
                       </div>
                     )}
@@ -823,25 +1005,41 @@ export function ProjectDashboard({
                           if (!projectId || !fsTargetColumn) return;
                           return runMutation(
                             async () => {
-                              const res = await applyFeatureSelection({
-                                projectId,
-                                method: fsMethod,
-                                targetColumn: fsTargetColumn,
-                                nFeaturesToSelect: fsNumFeatures,
-                                rfeEstimator: fsRfeEstimator,
-                                step: fsRfeStep,
-                              });
-                              if (res.rankings) {
-                                setFsRankings(res.rankings);
+                              try {
+                                const wasmRes = await pyodideClient.applyFeatureSelection(
+                                  projectId,
+                                  fsMethod,
+                                  fsTargetColumn,
+                                  fsNumFeatures,
+                                  availableFeatures,
+                                  fsRfeEstimator,
+                                  fsRfeStep
+                                );
+                                if (wasmRes.rankings) {
+                                  setFsRankings(wasmRes.rankings);
+                                }
+                                return wasmRes.summary;
+                              } catch {
+                                const res = await applyFeatureSelection({
+                                  projectId,
+                                  method: fsMethod,
+                                  targetColumn: fsTargetColumn,
+                                  nFeaturesToSelect: fsNumFeatures,
+                                  rfeEstimator: fsRfeEstimator,
+                                  step: fsRfeStep,
+                                });
+                                if (res.rankings) {
+                                  setFsRankings(res.rankings);
+                                }
+                                return res.snapshot ?? (await fetchProjectSnapshot(projectId));
                               }
-                              return res.snapshot ?? (await fetchProjectSnapshot(projectId));
                             },
                             `Applied ${fsMethod.toUpperCase()} feature selection: kept ${fsNumFeatures} top features.`,
                           );
                         }}
                       >
                         {isMutating
-                          ? "⏳ Pruning features..."
+                          ? "⏳ Pruning features in WebAssembly..."
                           : fsMethod === "mi"
                           ? `✂️ Prune to Top ${Math.min(fsNumFeatures, Math.max(1, currentColumns.length - 1))} Features (MI)`
                           : `✂️ Execute RFE Feature Selection`}

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,8 @@ class TrainRequest(BaseModel):
     n_trials: int = Field(default=15, ge=2, le=100)
     pruning_enabled: bool = True
     tuning_metric: str | None = None
+    preprocessed_data: list[dict[str, Any]] | None = None
+    dataset_csv: str | None = None
 
 
 class TrainTaskResponse(BaseModel):

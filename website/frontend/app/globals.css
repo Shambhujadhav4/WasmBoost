@@ -2018,3 +2018,56 @@ a {
   font-size: 0.82rem;
 }
 
+/* Phase 5: WebAssembly (Pyodide) Engine Styling */
+.wasm-status-bar {
+  background: linear-gradient(90deg, rgba(15, 118, 110, 0.25) 0%, rgba(6, 182, 212, 0.15) 100%);
+  border-bottom: 1px solid rgba(15, 118, 110, 0.35);
+  padding: 6px 16px;
+  font-size: 0.82rem;
+  backdrop-filter: blur(8px);
+}
+
+.wasm-status-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wasm-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wasm-status-dot.ready {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+}
+
+.wasm-status-dot.loading_runtime,
+.wasm-status-dot.loading_packages,
+.wasm-status-dot.busy {
+  background: #f59e0b;
+  animation: pulse 1.5s infinite;
+}
+
+.wasm-status-dot.error {
+  background: #ef4444;
+}
+
+.wasm-status-dot.uninitialized {
+  background: #64748b;
+}
+
+.wasm-status-text {
+  color: var(--text-muted);
+}
+
+.wasm-status-text strong {
+  color: var(--text);
+  margin-right: 4px;
+}
+

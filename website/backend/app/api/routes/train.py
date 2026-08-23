@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.schemas.training import TrainRequest, TrainStatusResponse, TrainTaskResponse
 from app.services.dataset_service import dataset_store
 from app.services.visualization_service import visualization_service
-from app.tasks.training import get_task_state, train_model_task
+from app.tasks.training import execute_training_direct, get_task_state, train_model_task
 
 
 def _get_task_info(task_id: str) -> tuple[str, Any, Any]:
@@ -85,34 +85,81 @@ def _get_artifact_file(session, format_type: str) -> tuple[Path, str]:
 
 @router.post("", response_model=TrainTaskResponse, status_code=status.HTTP_202_ACCEPTED)
 async def train_model(request: TrainRequest) -> TrainTaskResponse:
-    try:
-        session = dataset_store.get_project(request.project_id)
-        dataset_store.clear_model_state(session)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    import io
+    import pandas as pd
 
-    try:
-        try:
-            task = train_model_task.apply_async(
-                args=[request.project_id, request.model_dump()]
-            )
-        except Exception as broker_exc:
-            logger.warning(
-                "Celery broker/backend unreachable (%s). Executing task in fallback mode.",
-                broker_exc,
-            )
-            task = train_model_task.apply(
-                args=[request.project_id, request.model_dump()]
-            )
-
-        return TrainTaskResponse(
-            task_id=task.id or "task-local",
+    # Ingest client-side preprocessed data if handed off from WebAssembly (Pyodide)
+    if request.preprocessed_data is not None and len(request.preprocessed_data) > 0:
+        df_handoff = pd.DataFrame(request.preprocessed_data)
+        session = dataset_store.create_or_update_session_from_handoff(
             project_id=request.project_id,
-            status="queued",
-            message=f"Model training task for {request.model_name} dispatched to background queue.",
+            df=df_handoff,
+            target_column=request.target_column,
+            feature_columns=request.feature_columns,
+            task_type=request.task_type,
+            input_kind="pyodide_wasm",
         )
+        dataset_store.clear_model_state(session)
+    elif request.dataset_csv is not None and len(request.dataset_csv.strip()) > 0:
+        df_handoff = pd.read_csv(io.StringIO(request.dataset_csv))
+        session = dataset_store.create_or_update_session_from_handoff(
+            project_id=request.project_id,
+            df=df_handoff,
+            target_column=request.target_column,
+            feature_columns=request.feature_columns,
+            task_type=request.task_type,
+            input_kind="pyodide_wasm",
+        )
+        dataset_store.clear_model_state(session)
+    else:
+        try:
+            session = dataset_store.get_project(request.project_id)
+            dataset_store.clear_model_state(session)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    import uuid
+    import redis
+    task_id = uuid.uuid4().hex
+
+    try:
+        redis_available = False
+        try:
+            r = redis.Redis.from_url(
+                settings.redis_url,
+                socket_timeout=0.2,
+                socket_connect_timeout=0.2,
+            )
+            r.ping()
+            redis_available = True
+        except Exception:
+            redis_available = False
+
+        if redis_available:
+            task = train_model_task.apply_async(
+                args=[request.project_id, request.model_dump()],
+                task_id=task_id,
+            )
+            return TrainTaskResponse(
+                task_id=task.id or task_id,
+                project_id=request.project_id,
+                status="queued",
+                message=f"Model training task for {request.model_name} dispatched to Celery background queue.",
+            )
+        else:
+            execute_training_direct(
+                project_id=request.project_id,
+                request_data=request.model_dump(),
+                task_id=task_id,
+            )
+            return TrainTaskResponse(
+                task_id=task_id,
+                project_id=request.project_id,
+                status="queued",
+                message=f"Model training task for {request.model_name} executed in local worker mode.",
+            )
     except Exception as exc:
-        logger.exception("Failed to dispatch Celery training task: %s", exc)
+        logger.exception("Failed to dispatch training task: %s", exc)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to dispatch background training task: {exc}",

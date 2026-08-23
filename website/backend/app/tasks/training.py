@@ -38,9 +38,11 @@ def _get_redis_client() -> redis.Redis | None:
         return None
 
 
-@celery_app.task(bind=True, name="tasks.train_model")
-def train_model_task(self, project_id: str, request_data: dict[str, Any]) -> dict[str, Any]:
-    task_id = self.request.id or "task-local"
+def execute_training_direct(
+    project_id: str,
+    request_data: dict[str, Any],
+    task_id: str = "task-local",
+) -> dict[str, Any]:
     redis_client = _get_redis_client()
     channel = f"telemetry:{task_id}"
 
@@ -62,17 +64,7 @@ def train_model_task(self, project_id: str, request_data: dict[str, Any]) -> dic
             "timestamp": datetime.now(timezone.utc).isoformat(),
             **payload,
         }
-        # Update in-memory registry
         task_state_store[task_id] = {"state": "PROGRESS", "info": event}
-
-        # Update Celery task state
-        if redis_client is not None or celery_app.conf.task_always_eager:
-            try:
-                self.update_state(state="PROGRESS", meta=event)
-            except Exception:
-                pass
-
-        # Publish to Redis Pub/Sub channel
         if redis_client is not None:
             try:
                 redis_client.publish(channel, json.dumps(event, default=str))
@@ -82,7 +74,7 @@ def train_model_task(self, project_id: str, request_data: dict[str, Any]) -> dic
     publish_telemetry({
         "status": "queued",
         "progress": 5,
-        "message": "Task picked up by Celery worker. Initializing training...",
+        "message": "Task picked up by worker. Initializing training...",
     })
 
     try:
@@ -98,7 +90,7 @@ def train_model_task(self, project_id: str, request_data: dict[str, Any]) -> dic
         task_state_store[task_id] = {"state": "SUCCESS", "result": snapshot_dict}
         return snapshot_dict
     except Exception as exc:
-        logger.exception("Error during background model training task %s: %s", task_id, exc)
+        logger.exception("Error during model training task %s: %s", task_id, exc)
         task_state_store[task_id] = {"state": "FAILURE", "result": str(exc)}
         publish_telemetry({
             "status": "failed",
@@ -107,4 +99,10 @@ def train_model_task(self, project_id: str, request_data: dict[str, Any]) -> dic
             "message": f"Training failed: {exc}",
         })
         raise
+
+
+@celery_app.task(bind=True, name="tasks.train_model")
+def train_model_task(self, project_id: str, request_data: dict[str, Any]) -> dict[str, Any]:
+    task_id = self.request.id or "task-local"
+    return execute_training_direct(project_id, request_data, task_id=task_id)
 

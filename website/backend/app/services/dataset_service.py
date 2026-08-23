@@ -106,6 +106,40 @@ class DatasetStore:
         self.save_project(session)
         return session
 
+    def create_or_update_session_from_handoff(
+        self,
+        project_id: str,
+        df: pd.DataFrame,
+        *,
+        target_column: str,
+        feature_columns: list[str],
+        task_type: str,
+        input_kind: str = "pyodide_wasm",
+    ) -> ProjectSession:
+        if project_id in self._projects:
+            session = self._projects[project_id]
+            session.processed_data = df.copy()
+            session.target_column = target_column
+            session.feature_columns = feature_columns.copy()
+            session.task_type = task_type
+        else:
+            session = ProjectSession(
+                project_id=project_id,
+                input_kind=input_kind,
+                source_filename=f"wasm_preprocessed_{project_id[:8]}.csv",
+                source_mime_type="text/csv",
+                file_size_bytes=int(df.memory_usage(deep=True).sum()),
+                raw_data=df.copy(),
+                processed_data=df.copy(),
+                target_column=target_column,
+                feature_columns=feature_columns.copy(),
+                task_type=task_type,
+                preprocessing_log=["Preprocessed client-side in browser WebAssembly (Pyodide) runtime."],
+            )
+
+        self.save_project(session)
+        return session
+
     def get_project(self, project_id: str) -> ProjectSession:
         if project_id in self._projects:
             # Sync metadata from disk in case a worker updated it
