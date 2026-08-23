@@ -246,10 +246,10 @@ export function ResultsOverview({
 
     if (snapshot.trained_task_type === "classification") {
       return [
-        { label: "Accuracy", value: metricValue(modelResults.accuracy) },
-        { label: "F1 Score", value: metricValue(modelResults.f1_score) },
-        { label: "Precision", value: metricValue(modelResults.precision) },
-        { label: "Recall", value: metricValue(modelResults.recall) },
+        { label: "Accuracy", value: metricValue(modelResults.accuracy, true) },
+        { label: "F1 Score", value: metricValue(modelResults.f1_score, true) },
+        { label: "Precision", value: metricValue(modelResults.precision, true) },
+        { label: "Recall", value: metricValue(modelResults.recall, true) },
       ];
     }
 
@@ -358,7 +358,7 @@ export function ResultsOverview({
               className={`results-tab-btn ${activeTab === "overview" ? "active" : ""}`}
               onClick={() => setActiveTab("overview")}
             >
-              📊 Overview &amp; Evaluation
+              Overview &amp; Evaluation
             </button>
             <button
               type="button"
@@ -367,7 +367,7 @@ export function ResultsOverview({
               className={`results-tab-btn ${activeTab === "optuna" ? "active" : ""}`}
               onClick={() => setActiveTab("optuna")}
             >
-              🧠 Bayesian Optimization (Optuna)
+              Bayesian Optimization (Optuna)
               {optunaData && <span className="results-tab-badge">Active</span>}
             </button>
             <button
@@ -377,7 +377,7 @@ export function ResultsOverview({
               className={`results-tab-btn ${activeTab === "shap" ? "active" : ""}`}
               onClick={() => setActiveTab("shap")}
             >
-              🔍 Model Explainability (TreeSHAP)
+              Model Explainability (TreeSHAP)
               {shapData && <span className="results-tab-badge">Active</span>}
             </button>
           </div>
@@ -833,13 +833,19 @@ export function ResultsOverview({
   );
 }
 
-function metricValue(value: unknown) {
+function metricValue(value: unknown, isPercent: boolean = false) {
   if (typeof value === "number") {
+    if (isPercent && value >= 0 && value <= 1) {
+      return `${(value * 100).toFixed(1)}%`;
+    }
     return value.toFixed(4);
   }
 
   const parsed = Number.parseFloat(String(value));
   if (Number.isFinite(parsed)) {
+    if (isPercent && parsed >= 0 && parsed <= 1) {
+      return `${(parsed * 100).toFixed(1)}%`;
+    }
     return parsed.toFixed(4);
   }
 

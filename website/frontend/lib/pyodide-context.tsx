@@ -46,17 +46,28 @@ export function PyodideProvider({ children }: { children: React.ReactNode }) {
         client: pyodideClient,
       }}
     >
-      {/* Top subtle WebAssembly engine status badge */}
-      <div className="wasm-status-bar">
-        <div className="wasm-status-content">
-          <span className={`wasm-status-dot ${statusEvent.status}`} />
-          <span className="wasm-status-text">
-            <strong>WebAssembly (Pyodide) Engine:</strong> {statusEvent.message}
-          </span>
-        </div>
-      </div>
       {children}
     </PyodideContext.Provider>
+  );
+}
+
+export function PyodideStatusPill() {
+  const { status, statusMessage } = usePyodide();
+
+  let label = "Pyodide Idle";
+  if (status === "ready") {
+    label = "Pyodide WASM Ready";
+  } else if (status === "loading_runtime" || status === "loading_packages" || status === "busy") {
+    label = "Pyodide WASM Loading";
+  } else if (status === "error") {
+    label = "Pyodide Error";
+  }
+
+  return (
+    <div className={`pyodide-status-pill ${status}`} title={statusMessage}>
+      <span className={`status-pill-dot ${status}`} />
+      <span className="status-pill-text">{label}</span>
+    </div>
   );
 }
 

@@ -2,11 +2,11 @@ import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { TopNav } from "@/components/top-nav";
-import { PyodideProvider } from "@/lib/pyodide-context";
+import { PyodideProvider, PyodideStatusPill } from "@/lib/pyodide-context";
 
 export const metadata: Metadata = {
-  title: "DataPilot",
-  description: "Full-stack ML analytics workspace with WebAssembly EDA & Training Queue.",
+  title: "DataPilot | ML Analytics & Experimentation Engine",
+  description: "Modern full-stack ML workspace featuring client-side WebAssembly EDA, Bayesian optimization, and TreeSHAP explainability.",
 };
 
 const navItems = [
@@ -29,12 +29,15 @@ export default function RootLayout({
             <header className="topbar">
               <Link href="/" className="brand">
                 <span className="brand-mark">DP</span>
-                <span>
+                <span className="brand-text">
                   <strong>DataPilot</strong>
-                  <small>ML analytics workspace</small>
+                  <small>ML Workspace</small>
                 </span>
               </Link>
               <TopNav items={navItems} />
+              <div className="topbar-actions">
+                <PyodideStatusPill />
+              </div>
             </header>
             <main className="page">{children}</main>
           </div>

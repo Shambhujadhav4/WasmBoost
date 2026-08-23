@@ -851,14 +851,14 @@ export function ProjectDashboard({
                         className={`fs-toggle-btn ${fsMethod === "mi" ? "active" : ""}`}
                         onClick={() => setFsMethod("mi")}
                       >
-                        📊 Mutual Information (MI)
+                        Mutual Information (MI)
                       </button>
                       <button
                         type="button"
                         className={`fs-toggle-btn ${fsMethod === "rfe" ? "active" : ""}`}
                         onClick={() => setFsMethod("rfe")}
                       >
-                        ✂️ Recursive Feature Elimination (RFE)
+                        Recursive Feature Elimination (RFE)
                       </button>
                     </div>
 
@@ -1209,7 +1209,7 @@ export function ProjectDashboard({
           <div className={`panel stack${isDedicatedTraining ? " training-panel" : ""}`}>
             {isDedicatedTraining ? (
               <>
-                <h1 className="training-title">🧠 Model Training</h1>
+                <h1 className="training-title">Model Training</h1>
 
                 <section className="training-section">
                   <h2>1 · Task &amp; Model Selection</h2>
@@ -1340,11 +1340,11 @@ export function ProjectDashboard({
                 >
                   {isTraining
                     ? useAdvancedTuning
-                      ? "🧠 Running Bayesian optimization & training..."
-                      : "🚀 Training model in background..."
+                      ? "Running Bayesian optimization & training..."
+                      : "Training model in background..."
                     : useAdvancedTuning
-                    ? `🧠 Tune & Train (${optunaTrials} Optuna Trials)`
-                    : "🚀 Train Model"}
+                    ? `Tune & Train (${optunaTrials} Optuna Trials)`
+                    : "Train Model"}
                 </button>
 
                 {(isTraining || trainingProgress > 0) && (
