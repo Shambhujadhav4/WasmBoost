@@ -105,14 +105,29 @@ class PyodideClient {
               error: data.error,
             });
             if (data.status === "ready") {
+              this.status = "ready";
               resolve();
             } else if (data.status === "error") {
+              this.status = "error";
+              this.initPromise = null;
               reject(new Error(data.message || data.error));
             }
             return;
           }
 
           const { id, status, result, error } = data;
+          if (id === "init") {
+            if (status === "SUCCESS") {
+              this.status = "ready";
+              resolve();
+            } else {
+              this.status = "error";
+              this.initPromise = null;
+              reject(new Error(error || "Worker initialization failed."));
+            }
+            return;
+          }
+
           const handler = this.pendingRequests.get(id);
           if (handler) {
             this.pendingRequests.delete(id);
@@ -130,18 +145,23 @@ class PyodideClient {
             message: "Worker runtime encountered a fatal error.",
             error: err.message,
           });
+          this.status = "error";
+          this.initPromise = null;
           reject(err);
         };
       }
 
-      this.dispatch("INIT", {}).catch(reject);
+      // Send INIT action directly to worker without going through dispatch
+      this.worker.postMessage({ id: "init", action: "INIT", payload: {} });
     });
 
     return this.initPromise;
   }
 
   private async dispatch<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-    await this.init();
+    if (this.status !== "ready") {
+      await this.init();
+    }
     if (!this.worker) {
       throw new Error("Pyodide worker is unavailable in this environment.");
     }

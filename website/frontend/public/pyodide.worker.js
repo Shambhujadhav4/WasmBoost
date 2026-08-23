@@ -481,18 +481,18 @@ self.onmessage = async (event) => {
       pyodide.globals.set("_temp_sep", separator);
       pyodide.globals.set("_temp_hdr", headerRow);
 
-      await pyodide.runPythonAsync(`
+      const res = await pyodide.runPythonAsync(`
 df_loaded = pd.read_csv(io.StringIO(_temp_csv), sep=_temp_sep, header=_temp_hdr)
 _loaded_summary = create_session(_temp_pid, df_loaded, filename=_temp_fn)
 _loaded_insights = get_session_insights(_temp_pid)
 _loaded_rec = get_workflow_recommendation(_temp_pid)
+json.dumps({
+    "summary": _loaded_summary,
+    "insights": _loaded_insights,
+    "recommendations": _loaded_rec,
+})
 `);
-
-      const summary = pyodide.globals.get("_loaded_summary").toJs({ dict_converter: Object.fromEntries });
-      const insights = pyodide.globals.get("_loaded_insights").toJs({ dict_converter: Object.fromEntries });
-      const recommendations = pyodide.globals.get("_loaded_rec").toJs({ dict_converter: Object.fromEntries });
-
-      result = { summary, insights, recommendations };
+      result = JSON.parse(res);
     } else if (action === "GET_SNAPSHOT") {
       const { projectId } = payload;
       pyodide.globals.set("_temp_pid", projectId);
