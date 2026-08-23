@@ -35,6 +35,57 @@ class DatasetInsights(BaseModel):
     descriptive_statistics: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class OptunaTrialRecord(BaseModel):
+    trial_number: int
+    value: float | None = None
+    best_value: float | None = None
+    params: dict[str, Any] = Field(default_factory=dict)
+    state: str = "COMPLETE"
+    duration_seconds: float | None = None
+
+
+class OptunaOptimizationSummary(BaseModel):
+    study_name: str | None = None
+    best_params: dict[str, Any] = Field(default_factory=dict)
+    best_value: float | None = None
+    direction: str = "maximize"
+    metric_name: str = "score"
+    n_trials: int = 0
+    n_pruned: int = 0
+    n_completed: int = 0
+    trials_history: list[OptunaTrialRecord] = Field(default_factory=list)
+    param_importances: dict[str, float] = Field(default_factory=dict)
+
+
+class ShapFeatureContribution(BaseModel):
+    feature: str
+    value: float | str | None = None
+    shap_value: float
+
+
+class ShapSampleExplanation(BaseModel):
+    sample_index: int
+    base_value: float
+    output_value: float
+    contributions: list[ShapFeatureContribution] = Field(default_factory=list)
+
+
+class ShapBeeswarmPoint(BaseModel):
+    feature: str
+    feature_value: float | None = None
+    shap_value: float
+    sample_index: int
+
+
+class ShapSummaryPayload(BaseModel):
+    feature_importance: list[dict[str, Any]] = Field(default_factory=list)
+    base_value: float | None = None
+    sample_explanations: list[ShapSampleExplanation] = Field(default_factory=list)
+    beeswarm_points: list[ShapBeeswarmPoint] = Field(default_factory=list)
+    model_framework: str = "TreeSHAP"
+    is_tree_model: bool = True
+
+
 class ProjectSnapshot(BaseModel):
     summary: DatasetSummary
     target_column: str | None = None
@@ -47,6 +98,8 @@ class ProjectSnapshot(BaseModel):
     onnx_artifact_available: bool = False
     skops_artifact_filename: str | None = None
     onnx_artifact_filename: str | None = None
+    optuna_results: OptunaOptimizationSummary | None = None
+    shap_results: ShapSummaryPayload | None = None
 
 
 class ModelRecommendation(BaseModel):

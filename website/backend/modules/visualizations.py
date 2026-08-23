@@ -290,3 +290,224 @@ class DataVisualizer:
             height=380,
         )
         return fig
+
+    @staticmethod
+    def plot_mutual_information(scores_list: list[dict], target_col: str = "target"):
+        if not scores_list:
+            return None
+        sorted_scores = sorted(scores_list, key=lambda x: x["score"], reverse=False)
+        features = [item["feature"] for item in sorted_scores]
+        scores = [item["score"] for item in sorted_scores]
+        fig = go.Figure(
+            data=go.Bar(
+                x=scores,
+                y=features,
+                orientation="h",
+                marker=dict(
+                    color=scores,
+                    colorscale="Teal",
+                    showscale=True,
+                    colorbar=dict(title="MI Score"),
+                ),
+                text=[f"{s:.4f}" for s in scores],
+                textposition="outside",
+            )
+        )
+        fig.update_layout(
+            title=f"Mutual Information Scores with Target <b>'{target_col}'</b>",
+            xaxis_title="Mutual Information (Dependency Strength)",
+            yaxis_title="Feature",
+            height=max(360, len(features) * 26),
+            margin=dict(l=140, r=40, t=50, b=50),
+        )
+        return fig
+
+    @staticmethod
+    def plot_optuna_history(trials_history: list[dict], metric_name: str = "Score"):
+        if not trials_history:
+            return None
+        trial_nums = [t["trial_number"] for t in trials_history]
+        trial_vals = [t.get("value") for t in trials_history]
+        best_vals = [t.get("best_value") for t in trials_history]
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=trial_nums,
+                y=trial_vals,
+                mode="markers",
+                name="Trial Score",
+                marker=dict(size=9, color="#0ea5e9", opacity=0.75),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=trial_nums,
+                y=best_vals,
+                mode="lines",
+                name="Best Objective",
+                line=dict(color="#10b981", width=3),
+            )
+        )
+        fig.update_layout(
+            title="Optuna Hyperparameter Optimization History",
+            xaxis_title="Trial Number",
+            yaxis_title=f"Objective ({metric_name})",
+            height=400,
+            hovermode="x unified",
+        )
+        return fig
+
+    @staticmethod
+    def plot_optuna_param_importances(param_importances: dict[str, float]):
+        if not param_importances:
+            return None
+        sorted_items = sorted(param_importances.items(), key=lambda x: x[1], reverse=False)
+        params = [k for k, v in sorted_items]
+        importances = [v for k, v in sorted_items]
+
+        fig = go.Figure(
+            data=go.Bar(
+                x=importances,
+                y=params,
+                orientation="h",
+                marker=dict(color="#6366f1"),
+                text=[f"{v:.1%}" for v in importances],
+                textposition="outside",
+            )
+        )
+        fig.update_layout(
+            title="Hyperparameter Importances",
+            xaxis_title="Relative Importance",
+            yaxis_title="Hyperparameter",
+            height=max(320, len(params) * 32),
+            margin=dict(l=140, r=40, t=50, b=50),
+        )
+        return fig
+
+    @staticmethod
+    def plot_shap_summary(shap_payload: dict):
+        if not shap_payload or "beeswarm_points" not in shap_payload:
+            return None
+
+        points = shap_payload["beeswarm_points"]
+        if not points:
+            return None
+
+        # Sort features by global importance
+        feat_importance = {item["feature"]: item["importance"] for item in shap_payload.get("feature_importance", [])}
+        sorted_features = sorted(feat_importance.keys(), key=lambda f: feat_importance[f], reverse=True)[:10]
+
+        df_pts = pd.DataFrame(points)
+        df_pts = df_pts[df_pts["feature"].isin(sorted_features)]
+
+        fig = go.Figure()
+        for f in reversed(sorted_features):
+            sub = df_pts[df_pts["feature"] == f]
+            if sub.empty:
+                continue
+            f_vals = sub["feature_value"].values
+            min_v = f_vals.min() if len(f_vals) > 0 else 0
+            max_v = f_vals.max() if len(f_vals) > 0 else 1
+            norm_vals = (f_vals - min_v) / (max_v - min_v + 1e-8)
+
+            # Add jitter on y
+            jitter = np.random.normal(0, 0.08, size=len(sub))
+            y_coords = [f] * len(sub)
+
+            fig.add_trace(
+                go.Scatter(
+                    x=sub["shap_value"],
+                    y=y_coords,
+                    mode="markers",
+                    name=f,
+                    showlegend=False,
+                    marker=dict(
+                        size=7,
+                        color=norm_vals,
+                        colorscale="RdBu_r",
+                        opacity=0.7,
+                        line=dict(width=0.5, color="white"),
+                    ),
+                    text=[f"Feature val: {v:.3f}<br>SHAP: {s:.3f}" for v, s in zip(f_vals, sub["shap_value"])],
+                    hoverinfo="text",
+                )
+            )
+
+        fig.add_vline(x=0, line_dash="dash", line_color="rgba(255,255,255,0.4)")
+        fig.update_layout(
+            title="TreeSHAP Summary Distribution (Beeswarm)",
+            xaxis_title="SHAP value (Impact on Model Output)",
+            yaxis_title="Feature",
+            height=max(420, len(sorted_features) * 38),
+            margin=dict(l=140, r=40, t=50, b=50),
+        )
+        return fig
+
+    @staticmethod
+    def plot_shap_waterfall(local_explanation: dict, sample_index: int = 0):
+        if not local_explanation:
+            return None
+
+        base_value = local_explanation.get("base_value", 0.0)
+        output_value = local_explanation.get("output_value", 0.0)
+        contributions = local_explanation.get("contributions", [])[:10]
+
+        if not contributions:
+            return None
+
+        features = [c["feature"] for c in contributions]
+        shap_vals = [c["shap_value"] for c in contributions]
+        feature_vals = [c.get("value") for c in contributions]
+
+        colors = ["#ef4444" if v >= 0 else "#3b82f6" for v in shap_vals]
+
+        fig = go.Figure(
+            data=go.Bar(
+                x=shap_vals,
+                y=features,
+                orientation="h",
+                marker=dict(color=colors),
+                text=[f"{v:+.4f} (val: {fv})" for v, fv in zip(shap_vals, feature_vals)],
+                textposition="outside",
+            )
+        )
+        fig.add_vline(x=0, line_dash="solid", line_color="rgba(255,255,255,0.4)")
+        fig.update_layout(
+            title=f"SHAP Local Feature Contributions (Sample #{sample_index + 1}) · Base: {base_value:.3f} → Prediction: {output_value:.3f}",
+            xaxis_title="SHAP Feature Contribution (+ pushes prediction up, - pushes down)",
+            yaxis_title="Feature",
+            height=max(360, len(features) * 32),
+            margin=dict(l=140, r=60, t=60, b=50),
+        )
+        return fig
+
+    @staticmethod
+    def plot_shap_dependence(shap_payload: dict, feature_name: str):
+        if not shap_payload or "beeswarm_points" not in shap_payload:
+            return None
+
+        points = [p for p in shap_payload["beeswarm_points"] if p["feature"] == feature_name]
+        if not points:
+            return None
+
+        x_vals = [p["feature_value"] for p in points]
+        y_vals = [p["shap_value"] for p in points]
+
+        fig = go.Figure(
+            data=go.Scatter(
+                x=x_vals,
+                y=y_vals,
+                mode="markers",
+                marker=dict(size=8, color="#06b6d4", opacity=0.75),
+                text=[f"Value: {x:.3f}, SHAP: {y:.3f}" for x, y in zip(x_vals, y_vals)],
+            )
+        )
+        fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.4)")
+        fig.update_layout(
+            title=f"TreeSHAP Dependence: <b>{feature_name}</b>",
+            xaxis_title=f"{feature_name} value",
+            yaxis_title="SHAP value (Impact on Model Output)",
+            height=380,
+        )
+        return fig

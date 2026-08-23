@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
+  applyFeatureSelection,
   fetchBoxplotFigure,
   fetchCountplotFigure,
   dropColumns,
   encodeCategorical,
   fetchCorrelationFigure,
   fetchDistributionFigure,
+  fetchMutualInformation,
   fetchProjectSnapshot,
   fetchScatterFigure,
   fetchVisualizationMetadata,
@@ -26,7 +28,7 @@ import {
   REGRESSION_MODELS,
 } from "@/lib/model-options";
 import { ACTIVE_PROJECT_STORAGE_KEY } from "@/lib/project-session";
-import type { ProjectSnapshot, TelemetryEvent } from "@/lib/types";
+import type { FeatureRankingItem, MutualInformationItem, ProjectSnapshot, TelemetryEvent } from "@/lib/types";
 
 
 import { DataPreviewTable } from "./data-preview-table";
@@ -48,12 +50,14 @@ function syncSelection(current: string[], next: string[]) {
 }
 
 export function ProjectDashboard({
+  initialSnapshot,
   initialSection = "prepare",
   showSectionTabs = true,
   pageTitle = "Project dashboard",
   stepLabel = "Step 2",
   description = "This page reads a real project snapshot from your FastAPI backend.",
 }: {
+  initialSnapshot?: ProjectSnapshot;
   initialSection?: DashboardSection;
   showSectionTabs?: boolean;
   pageTitle?: string;
@@ -62,10 +66,11 @@ export function ProjectDashboard({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedProjectId = searchParams.get("projectId");
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(initialSnapshot ?? null);
   const [vizMeta, setVizMeta] = useState<VizMeta | null>(null);
-  const [status, setStatus] = useState("Load a dataset to see its live summary.");
+  const [status, setStatus] = useState("Ready to work with dataset.");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
@@ -84,7 +89,17 @@ export function ProjectDashboard({
   const [outlierMethod, setOutlierMethod] = useState<"iqr_remove" | "iqr_cap" | "zscore_remove">("iqr_remove");
   const [outlierColumns, setOutlierColumns] = useState<string[]>([]);
   const [outlierThreshold, setOutlierThreshold] = useState(1.5);
-  const [activePreprocessAction, setActivePreprocessAction] = useState<"drop" | "missing" | "encoding" | "scaling" | "outliers">("drop");
+  const [activePreprocessAction, setActivePreprocessAction] = useState<"drop" | "missing" | "encoding" | "scaling" | "outliers" | "feature_selection">("drop");
+
+  // Phase 4: Feature Selection state
+  const [fsMethod, setFsMethod] = useState<"mi" | "rfe">("mi");
+  const [fsTargetColumn, setFsTargetColumn] = useState("");
+  const [fsNumFeatures, setFsNumFeatures] = useState(5);
+  const [fsRfeEstimator, setFsRfeEstimator] = useState("Random Forest");
+  const [fsRfeStep, setFsRfeStep] = useState(1);
+  const [fsMiScores, setFsMiScores] = useState<MutualInformationItem[]>([]);
+  const [fsRankings, setFsRankings] = useState<FeatureRankingItem[]>([]);
+  const [isComputingMi, setIsComputingMi] = useState(false);
 
   const [taskType, setTaskType] = useState<"classification" | "regression">("classification");
   const [selectedModel, setSelectedModel] = useState<string>(CLASSIFICATION_MODELS[0]);
@@ -93,6 +108,12 @@ export function ProjectDashboard({
   const [testSize, setTestSize] = useState(0.2);
   const [randomState, setRandomState] = useState(42);
   const [runCv, setRunCv] = useState(true);
+
+  // Phase 4: Hyperparameter Tuning state
+  const [useAdvancedTuning, setUseAdvancedTuning] = useState(false);
+  const [optunaTrials, setOptunaTrials] = useState(15);
+  const [optunaPruning, setOptunaPruning] = useState(true);
+
   const [trainingMessage, setTrainingMessage] = useState("Configure options and click Train Model.");
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [trainingStage, setTrainingStage] = useState<string>("idle");
@@ -366,6 +387,9 @@ export function ProjectDashboard({
           testSize,
           randomState,
           runCv,
+          useHyperparameterTuning: useAdvancedTuning,
+          nTrials: optunaTrials,
+          pruningEnabled: optunaPruning,
         },
         (event: TelemetryEvent) => {
           setTrainingProgress(event.progress);
@@ -499,6 +523,7 @@ export function ProjectDashboard({
                   <button type="button" role="tab" aria-selected={activePreprocessAction === "encoding"} className={`preprocess-tab${activePreprocessAction === "encoding" ? " active" : ""}`} onClick={() => setActivePreprocessAction("encoding")}>🔤 Encoding</button>
                   <button type="button" role="tab" aria-selected={activePreprocessAction === "scaling"} className={`preprocess-tab${activePreprocessAction === "scaling" ? " active" : ""}`} onClick={() => setActivePreprocessAction("scaling")}>📏 Scaling</button>
                   <button type="button" role="tab" aria-selected={activePreprocessAction === "outliers"} className={`preprocess-tab${activePreprocessAction === "outliers" ? " active" : ""}`} onClick={() => setActivePreprocessAction("outliers")}>📐 Outliers</button>
+                  <button type="button" role="tab" aria-selected={activePreprocessAction === "feature_selection"} className={`preprocess-tab${activePreprocessAction === "feature_selection" ? " active" : ""}`} onClick={() => setActivePreprocessAction("feature_selection")}>🎯 Feature Selection</button>
                 </div>
 
                 {activePreprocessAction === "drop" ? (
@@ -637,6 +662,191 @@ export function ProjectDashboard({
                         </label>
                       </div>
                     </PreprocessCard>
+                  </div>
+                ) : null}
+
+                {activePreprocessAction === "feature_selection" ? (
+                  <div className="preprocess-action-card">
+                    <div className="section-heading section-heading-compact">
+                      <p className="eyebrow">Dual Feature Selection (MI & RFE)</p>
+                      <p className="preprocess-helper">
+                        Prune redundant or collinear features using non-linear Mutual Information ranking or Recursive Feature Elimination.
+                      </p>
+                    </div>
+
+                    <div className="feature-selection-method-toggle">
+                      <button
+                        type="button"
+                        className={`fs-toggle-btn ${fsMethod === "mi" ? "active" : ""}`}
+                        onClick={() => setFsMethod("mi")}
+                      >
+                        📊 Mutual Information (MI)
+                      </button>
+                      <button
+                        type="button"
+                        className={`fs-toggle-btn ${fsMethod === "rfe" ? "active" : ""}`}
+                        onClick={() => setFsMethod("rfe")}
+                      >
+                        ✂️ Recursive Feature Elimination (RFE)
+                      </button>
+                    </div>
+
+                    <div className="field-grid">
+                      <label className="field">
+                        <span>Target Column (Required)</span>
+                        <select
+                          value={fsTargetColumn}
+                          onChange={(e) => {
+                            setFsTargetColumn(e.target.value);
+                            setFsMiScores([]);
+                          }}
+                        >
+                          <option value="">Select target column</option>
+                          {currentColumns.map((col) => (
+                            <option key={col} value={col}>
+                              {col}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="field">
+                        <span>Number of features to keep (k)</span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={Math.max(1, currentColumns.length - 1)}
+                          step={1}
+                          value={Math.min(fsNumFeatures, Math.max(1, currentColumns.length - 1))}
+                          onChange={(e) => setFsNumFeatures(Number(e.target.value))}
+                        />
+                        <span className="range-value">
+                          {Math.min(fsNumFeatures, Math.max(1, currentColumns.length - 1))} features
+                        </span>
+                      </label>
+
+                      {fsMethod === "rfe" && (
+                        <>
+                          <label className="field">
+                            <span>Base Estimator</span>
+                            <select
+                              value={fsRfeEstimator}
+                              onChange={(e) => setFsRfeEstimator(e.target.value)}
+                            >
+                              <option value="Random Forest">Random Forest</option>
+                              <option value="Gradient Boosting">Gradient Boosting</option>
+                              <option value="Logistic/Ridge">Linear / Ridge / Logistic</option>
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>Step (Features pruned per iteration)</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={fsRfeStep}
+                              onChange={(e) => setFsRfeStep(Math.max(1, Number(e.target.value)))}
+                            />
+                          </label>
+                        </>
+                      )}
+                    </div>
+
+                    {fsMethod === "mi" && (
+                      <div className="mi-action-row" style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+                        <button
+                          type="button"
+                          className="button button-secondary"
+                          disabled={!projectId || !fsTargetColumn || isComputingMi || isMutating}
+                          onClick={async () => {
+                            if (!projectId || !fsTargetColumn) return;
+                            setIsComputingMi(true);
+                            setError(null);
+                            try {
+                              const res = await fetchMutualInformation({
+                                projectId,
+                                targetColumn: fsTargetColumn,
+                              });
+                              setFsMiScores(res.scores);
+                              setStatus(`Computed Mutual Information for ${res.scores.length} features.`);
+                            } catch (err) {
+                              const msg = err instanceof Error ? err.message : "Failed to compute MI scores.";
+                              setError(msg);
+                            } finally {
+                              setIsComputingMi(false);
+                            }
+                          }}
+                        >
+                          {isComputingMi ? "⏳ Computing MI dependency scores..." : "🔍 Calculate Mutual Information Scores"}
+                        </button>
+                      </div>
+                    )}
+
+                    {fsMiScores.length > 0 && fsMethod === "mi" && (
+                      <div className="mi-scores-table-container">
+                        <h4>Mutual Information Dependency Ranking</h4>
+                        <div className="mi-scores-list">
+                          {fsMiScores.map((item, idx) => {
+                            const isSelected = idx < fsNumFeatures;
+                            return (
+                              <div
+                                key={item.feature}
+                                className={`mi-score-card ${isSelected ? "selected" : "pruned"}`}
+                              >
+                                <div className="mi-card-header">
+                                  <span className="mi-rank">#{idx + 1}</span>
+                                  <strong className="mi-feature-name">{item.feature}</strong>
+                                  <span className="mi-score-value">MI: {item.score.toFixed(4)}</span>
+                                  <span className={`mi-badge ${isSelected ? "keep" : "drop"}`}>
+                                    {isSelected ? "Keep" : "Prune"}
+                                  </span>
+                                </div>
+                                <div className="mi-bar-track">
+                                  <div
+                                    className="mi-bar-fill"
+                                    style={{ width: `${Math.min(100, item.normalized_score * 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="button-row" style={{ marginTop: "1.25rem" }}>
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        disabled={!projectId || !fsTargetColumn || isMutating || isComputingMi}
+                        onClick={() => {
+                          if (!projectId || !fsTargetColumn) return;
+                          return runMutation(
+                            async () => {
+                              const res = await applyFeatureSelection({
+                                projectId,
+                                method: fsMethod,
+                                targetColumn: fsTargetColumn,
+                                nFeaturesToSelect: fsNumFeatures,
+                                rfeEstimator: fsRfeEstimator,
+                                step: fsRfeStep,
+                              });
+                              if (res.rankings) {
+                                setFsRankings(res.rankings);
+                              }
+                              return res.snapshot ?? (await fetchProjectSnapshot(projectId));
+                            },
+                            `Applied ${fsMethod.toUpperCase()} feature selection: kept ${fsNumFeatures} top features.`,
+                          );
+                        }}
+                      >
+                        {isMutating
+                          ? "⏳ Pruning features..."
+                          : fsMethod === "mi"
+                          ? `✂️ Prune to Top ${Math.min(fsNumFeatures, Math.max(1, currentColumns.length - 1))} Features (MI)`
+                          : `✂️ Execute RFE Feature Selection`}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
 
@@ -876,13 +1086,67 @@ export function ProjectDashboard({
                   </div>
                 </section>
 
+                <section className="training-section advanced-tuning-section">
+                  <div className="advanced-tuning-header">
+                    <div>
+                      <h2>4 · Bayesian Hyperparameter Optimization (Optuna)</h2>
+                      <p className="preprocess-helper" style={{ margin: 0, marginTop: "0.25rem" }}>
+                        Automatically discover optimal model hyperparameters via Tree-structured Parzen Estimator (TPE) with trial pruning.
+                      </p>
+                    </div>
+                    <label className="switch-label">
+                      <input
+                        type="checkbox"
+                        checked={useAdvancedTuning}
+                        onChange={(e) => setUseAdvancedTuning(e.target.checked)}
+                      />
+                      <span className="switch-slider" />
+                    </label>
+                  </div>
+
+                  {useAdvancedTuning && (
+                    <div className="advanced-tuning-controls field-grid" style={{ marginTop: "1rem" }}>
+                      <label className="field">
+                        <span>Number of Optuna Trials</span>
+                        <input
+                          type="range"
+                          min={5}
+                          max={50}
+                          step={5}
+                          value={optunaTrials}
+                          onChange={(e) => setOptunaTrials(Number(e.target.value))}
+                        />
+                        <span className="range-value">{optunaTrials} trials</span>
+                      </label>
+
+                      <label className="field training-checkbox-field" style={{ justifyContent: "center" }}>
+                        <span>Trial Pruning</span>
+                        <label className="training-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={optunaPruning}
+                            onChange={(e) => setOptunaPruning(e.target.checked)}
+                          />
+                          <span>Median Pruner (Fast Convergence)</span>
+                        </label>
+                      </label>
+                    </div>
+                  )}
+                </section>
+
                 <button
                   type="button"
                   className="button button-primary training-submit"
                   disabled={!projectId || !targetColumn || !featureColumns.length || isTraining || isMutating}
                   onClick={() => void trainAndNavigateToResults()}
                 >
-                  {isTraining ? "🚀 Training model in background..." : "🚀 Train Model"}
+                  {isTraining
+                    ? useAdvancedTuning
+                      ? "🧠 Running Bayesian optimization & training..."
+                      : "🚀 Training model in background..."
+                    : useAdvancedTuning
+                    ? `🧠 Tune & Train (${optunaTrials} Optuna Trials)`
+                    : "🚀 Train Model"}
                 </button>
 
                 {(isTraining || trainingProgress > 0) && (

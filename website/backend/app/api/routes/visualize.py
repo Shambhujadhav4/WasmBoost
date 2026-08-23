@@ -101,3 +101,48 @@ def model_evaluation_charts(project_id: str) -> dict[str, object]:
         "actual_vs_predicted": visualization_service.build_actual_vs_predicted_figure(session),
         "residuals": visualization_service.build_residuals_figure(session),
     }
+
+
+@router.get("/{project_id}/optuna-history")
+def optuna_history_charts(project_id: str) -> dict[str, object]:
+    session = _get_session(project_id)
+    return {
+        "project_id": project_id,
+        "history_figure": visualization_service.build_optuna_history_figure(session),
+        "param_importances_figure": visualization_service.build_optuna_param_importances_figure(session),
+    }
+
+
+@router.get("/{project_id}/shap-summary")
+def shap_summary_chart(project_id: str) -> dict[str, object]:
+    session = _get_session(project_id)
+    return {
+        "project_id": project_id,
+        "figure": visualization_service.build_shap_summary_figure(session),
+    }
+
+
+@router.get("/{project_id}/shap-waterfall")
+def shap_waterfall_chart(
+    project_id: str,
+    sample_index: int = Query(default=0, ge=0),
+) -> dict[str, object]:
+    session = _get_session(project_id)
+    return {
+        "project_id": project_id,
+        "sample_index": sample_index,
+        "figure": visualization_service.build_shap_waterfall_figure(session, sample_index=sample_index),
+    }
+
+
+@router.get("/{project_id}/shap-dependence")
+def shap_dependence_chart(
+    project_id: str,
+    feature: str = Query(...),
+) -> dict[str, object]:
+    session = _get_session(project_id)
+    return {
+        "project_id": project_id,
+        "feature": feature,
+        "figure": visualization_service.build_shap_dependence_figure(session, feature_name=feature),
+    }

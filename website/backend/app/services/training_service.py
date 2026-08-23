@@ -172,14 +172,44 @@ class TrainingService:
             request.task_type,
         )
 
-        if progress_callback:
-            progress_callback({
-                "status": "training",
-                "progress": 35,
-                "message": f"Fitting {request.model_name} estimator on {len(trainer.X_train)} training samples...",
-            })
+        if request.use_hyperparameter_tuning:
+            if progress_callback:
+                progress_callback({
+                    "status": "tuning",
+                    "progress": 25,
+                    "message": f"Starting Optuna Bayesian Hyperparameter Optimization ({request.n_trials} trials)...",
+                })
 
-        trainer.train(request.task_type, request.model_name)
+            def on_optuna_trial(trial_record: dict[str, Any]) -> None:
+                if progress_callback:
+                    trial_num = trial_record.get("trial_number", 1)
+                    n_trials = request.n_trials
+                    pct = int(25 + (trial_num / max(1, n_trials)) * 35)  # 25% -> 60%
+                    progress_callback({
+                        "status": "tuning",
+                        "progress": pct,
+                        "message": f"Optuna Trial {trial_num}/{n_trials}: score={trial_record.get('value')} (Best: {trial_record.get('best_value')})",
+                        "optuna_trial": trial_record,
+                    })
+
+            trainer.tune_and_train(
+                task_type=request.task_type,
+                model_name=request.model_name,
+                n_trials=request.n_trials,
+                random_state=request.random_state,
+                pruning_enabled=request.pruning_enabled,
+                tuning_metric=request.tuning_metric,
+                trial_callback=on_optuna_trial,
+            )
+        else:
+            if progress_callback:
+                progress_callback({
+                    "status": "training",
+                    "progress": 35,
+                    "message": f"Fitting {request.model_name} estimator on {len(trainer.X_train)} training samples...",
+                })
+
+            trainer.train(request.task_type, request.model_name)
 
         if progress_callback:
             progress_callback({
@@ -198,6 +228,20 @@ class TrainingService:
                 })
             metrics["cv_scores"] = trainer.get_cross_val_scores(cv=5)
 
+        if progress_callback:
+            progress_callback({
+                "status": "explaining",
+                "progress": 82,
+                "message": "Computing TreeSHAP feature explanations and contribution breakdowns...",
+            })
+
+        shap_payload = trainer.compute_shap_explanations(sample_limit=200)
+        if shap_payload is not None:
+            metrics["shap_explanations"] = shap_payload
+
+        if trainer.optuna_results is not None:
+            metrics["optuna_optimization"] = trainer.optuna_results
+
         session.model_trainer = trainer
         session.model_results = _serialize(metrics)
         session.target_column = request.target_column
@@ -207,7 +251,7 @@ class TrainingService:
         if progress_callback:
             progress_callback({
                 "status": "exporting",
-                "progress": 90,
+                "progress": 92,
                 "message": "Generating secure .skops and production .onnx model artifacts...",
             })
 
@@ -222,7 +266,7 @@ class TrainingService:
             progress_callback({
                 "status": "completed",
                 "progress": 100,
-                "message": f"{request.model_name} training and export completed successfully!",
+                "message": f"{request.model_name} training, Optuna tuning, and TreeSHAP analysis completed successfully!",
                 "snapshot": snapshot_dict,
             })
 

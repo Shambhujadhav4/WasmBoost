@@ -2,7 +2,10 @@ import type {
   DatasetInsights,
   DatasetSummary,
   FeatureImportanceRow,
+  FeatureSelectionResponse,
+  MutualInformationResponse,
   ProjectSnapshot,
+  ShapSummaryPayload,
   TelemetryEvent,
   TrainStatusResponse,
   TrainTaskResponse,
@@ -212,6 +215,46 @@ export async function handleOutliers(params: {
   });
 }
 
+export async function fetchMutualInformation(params: {
+  projectId: string;
+  targetColumn: string;
+  featureColumns?: string[];
+  taskType?: "classification" | "regression";
+}): Promise<MutualInformationResponse> {
+  return postJson<MutualInformationResponse>(
+    `${API_BASE_URL}/preprocess/mutual-information`,
+    {
+      project_id: params.projectId,
+      target_column: params.targetColumn,
+      feature_columns: params.featureColumns ?? [],
+      task_type: params.taskType ?? null,
+    },
+  );
+}
+
+export async function applyFeatureSelection(params: {
+  projectId: string;
+  method: "mi" | "rfe";
+  targetColumn: string;
+  nFeaturesToSelect: number;
+  featureColumns?: string[];
+  rfeEstimator?: string;
+  step?: number;
+}): Promise<FeatureSelectionResponse> {
+  return postJson<FeatureSelectionResponse>(
+    `${API_BASE_URL}/preprocess/feature-selection`,
+    {
+      project_id: params.projectId,
+      method: params.method,
+      target_column: params.targetColumn,
+      n_features_to_select: params.nFeaturesToSelect,
+      feature_columns: params.featureColumns ?? [],
+      rfe_estimator: params.rfeEstimator ?? "Random Forest",
+      step: params.step ?? 1.0,
+    },
+  );
+}
+
 export async function dispatchTrainTask(params: {
   projectId: string;
   taskType: "classification" | "regression";
@@ -221,6 +264,10 @@ export async function dispatchTrainTask(params: {
   testSize: number;
   randomState: number;
   runCv: boolean;
+  useHyperparameterTuning?: boolean;
+  nTrials?: number;
+  pruningEnabled?: boolean;
+  tuningMetric?: string;
 }): Promise<TrainTaskResponse> {
   return postJson<TrainTaskResponse>(`${API_BASE_URL}/train`, {
     project_id: params.projectId,
@@ -231,6 +278,10 @@ export async function dispatchTrainTask(params: {
     test_size: params.testSize,
     random_state: params.randomState,
     run_cv: params.runCv,
+    use_hyperparameter_tuning: params.useHyperparameterTuning ?? false,
+    n_trials: params.nTrials ?? 15,
+    pruning_enabled: params.pruningEnabled ?? true,
+    tuning_metric: params.tuningMetric ?? null,
   });
 }
 
@@ -257,6 +308,10 @@ export async function trainModelWithTelemetry(
     testSize: number;
     randomState: number;
     runCv: boolean;
+    useHyperparameterTuning?: boolean;
+    nTrials?: number;
+    pruningEnabled?: boolean;
+    tuningMetric?: string;
   },
   onTelemetry?: (event: TelemetryEvent) => void,
 ): Promise<ProjectSnapshot> {
@@ -391,8 +446,67 @@ export async function trainModel(params: {
   testSize: number;
   randomState: number;
   runCv: boolean;
+  useHyperparameterTuning?: boolean;
+  nTrials?: number;
+  pruningEnabled?: boolean;
+  tuningMetric?: string;
 }): Promise<ProjectSnapshot> {
   return trainModelWithTelemetry(params);
+}
+
+export async function fetchShapExplanations(projectId: string): Promise<{
+  project_id: string;
+  shap_explanations?: ShapSummaryPayload | null;
+  optuna_optimization?: Record<string, unknown> | null;
+}> {
+  const response = await safeFetch(`${API_BASE_URL}/train/${projectId}/shap`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Unable to load SHAP explanations."));
+  }
+
+  return response.json();
+}
+
+export async function fetchOptunaFigures(projectId: string): Promise<{
+  project_id: string;
+  history_figure: Record<string, unknown> | null;
+  param_importances_figure: Record<string, unknown> | null;
+}> {
+  const response = await safeFetch(`${API_BASE_URL}/visualize/${projectId}/optuna-history`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Unable to load Optuna optimization charts."));
+  }
+
+  return response.json();
+}
+
+export async function fetchShapSummaryFigure(projectId: string): Promise<Record<string, unknown> | null> {
+  return fetchFigure(`${API_BASE_URL}/visualize/${projectId}/shap-summary`);
+}
+
+export async function fetchShapWaterfallFigure(params: {
+  projectId: string;
+  sampleIndex?: number;
+}): Promise<Record<string, unknown> | null> {
+  const idx = params.sampleIndex ?? 0;
+  return fetchFigure(`${API_BASE_URL}/visualize/${params.projectId}/shap-waterfall?sample_index=${idx}`);
+}
+
+export async function fetchShapDependenceFigure(params: {
+  projectId: string;
+  feature: string;
+}): Promise<Record<string, unknown> | null> {
+  return fetchFigure(
+    `${API_BASE_URL}/visualize/${params.projectId}/shap-dependence?feature=${encodeURIComponent(params.feature)}`,
+  );
 }
 
 

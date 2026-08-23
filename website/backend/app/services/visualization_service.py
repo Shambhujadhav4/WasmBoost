@@ -146,6 +146,67 @@ class VisualizationService:
         figure = DataVisualizer.plot_residuals(trainer.y_test, trainer.y_pred)
         return self._serialize_figure(figure)
 
+    def build_optuna_history_figure(
+        self,
+        session: ProjectSession,
+    ) -> dict[str, Any] | None:
+        if not session.model_results or "optuna_optimization" not in session.model_results:
+            return None
+        opt_data = session.model_results["optuna_optimization"]
+        figure = DataVisualizer.plot_optuna_history(
+            opt_data.get("trials_history", []),
+            metric_name=opt_data.get("metric_name", "Score"),
+        )
+        return self._serialize_figure(figure)
+
+    def build_optuna_param_importances_figure(
+        self,
+        session: ProjectSession,
+    ) -> dict[str, Any] | None:
+        if not session.model_results or "optuna_optimization" not in session.model_results:
+            return None
+        opt_data = session.model_results["optuna_optimization"]
+        figure = DataVisualizer.plot_optuna_param_importances(
+            opt_data.get("param_importances", {}),
+        )
+        return self._serialize_figure(figure)
+
+    def build_shap_summary_figure(
+        self,
+        session: ProjectSession,
+    ) -> dict[str, Any] | None:
+        if not session.model_results or "shap_explanations" not in session.model_results:
+            return None
+        shap_payload = session.model_results["shap_explanations"]
+        figure = DataVisualizer.plot_shap_summary(shap_payload)
+        return self._serialize_figure(figure)
+
+    def build_shap_waterfall_figure(
+        self,
+        session: ProjectSession,
+        sample_index: int = 0,
+    ) -> dict[str, Any] | None:
+        if not session.model_results or "shap_explanations" not in session.model_results:
+            return None
+        shap_payload = session.model_results["shap_explanations"]
+        explanations = shap_payload.get("sample_explanations", [])
+        if not explanations:
+            return None
+        idx = max(0, min(sample_index, len(explanations) - 1))
+        figure = DataVisualizer.plot_shap_waterfall(explanations[idx], sample_index=idx)
+        return self._serialize_figure(figure)
+
+    def build_shap_dependence_figure(
+        self,
+        session: ProjectSession,
+        feature_name: str,
+    ) -> dict[str, Any] | None:
+        if not session.model_results or "shap_explanations" not in session.model_results:
+            return None
+        shap_payload = session.model_results["shap_explanations"]
+        figure = DataVisualizer.plot_shap_dependence(shap_payload, feature_name)
+        return self._serialize_figure(figure)
+
     def _serialize_figure(self, figure: Any) -> dict[str, Any] | None:
         if figure is None:
             return None

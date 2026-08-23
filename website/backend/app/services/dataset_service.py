@@ -209,6 +209,12 @@ class DatasetStore:
     def build_snapshot(self, session: ProjectSession) -> ProjectSnapshot:
         has_skops = bool(session.artifact_skops_path)
         has_onnx = bool(session.artifact_onnx_path)
+        optuna_res = None
+        shap_res = None
+        if session.model_results and isinstance(session.model_results, dict):
+            optuna_res = session.model_results.get("optuna_optimization")
+            shap_res = session.model_results.get("shap_explanations")
+
         return ProjectSnapshot(
             summary=self.build_summary(session),
             target_column=session.target_column,
@@ -221,6 +227,8 @@ class DatasetStore:
             onnx_artifact_available=has_onnx,
             skops_artifact_filename=session.artifact_skops_filename,
             onnx_artifact_filename=session.artifact_onnx_filename,
+            optuna_results=optuna_res,
+            shap_results=shap_res,
         )
 
 

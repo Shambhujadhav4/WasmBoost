@@ -368,6 +368,23 @@ def feature_importance(project_id: str) -> dict[str, object]:
     }
 
 
+@router.get("/{project_id}/shap")
+def shap_explanations(project_id: str) -> dict[str, object]:
+    try:
+        session = dataset_store.get_project(project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    shap_data = session.model_results.get("shap_explanations") if session.model_results else None
+    optuna_data = session.model_results.get("optuna_optimization") if session.model_results else None
+
+    return {
+        "project_id": project_id,
+        "shap_explanations": shap_data,
+        "optuna_optimization": optuna_data,
+    }
+
+
 @router.get("/{project_id}/artifact")
 def download_artifact(
     project_id: str,

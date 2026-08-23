@@ -34,3 +34,52 @@ class OutlierRequest(BaseModel):
     method: Literal["iqr_remove", "iqr_cap", "zscore_remove"]
     columns: list[str] = Field(default_factory=list)
     threshold: float = 1.5
+
+
+class MutualInformationRequest(BaseModel):
+    project_id: str
+    target_column: str
+    feature_columns: list[str] = Field(default_factory=list)
+    task_type: Literal["classification", "regression"] | None = None
+
+
+class MutualInformationItem(BaseModel):
+    feature: str
+    score: float
+    normalized_score: float
+
+
+class MutualInformationResponse(BaseModel):
+    project_id: str
+    target_column: str
+    task_type: str
+    scores: list[MutualInformationItem] = Field(default_factory=list)
+    figure: dict[str, object] | None = None
+
+
+class FeatureSelectionRequest(BaseModel):
+    project_id: str
+    method: Literal["mi", "rfe"]
+    target_column: str
+    n_features_to_select: int = Field(default=5, ge=1)
+    task_type: Literal["classification", "regression"] | None = None
+    feature_columns: list[str] = Field(default_factory=list)
+    rfe_estimator: str | None = "Random Forest"
+    step: float = Field(default=1.0, gt=0)
+
+
+class FeatureRankingItem(BaseModel):
+    feature: str
+    ranking: int
+    selected: bool
+    score: float | None = None
+
+
+class FeatureSelectionResponse(BaseModel):
+    project_id: str
+    method: str
+    target_column: str
+    selected_features: list[str]
+    eliminated_features: list[str]
+    rankings: list[FeatureRankingItem] = Field(default_factory=list)
+    snapshot: dict[str, object] | None = None

@@ -69,6 +69,9 @@ class ModelTrainer:
         self.model_name: str = ""
         self.label_encoder: LabelEncoder | None = None
 
+        self.optuna_results: dict | None = None
+        self.shap_results: dict | None = None
+
     def prepare_data(
         self,
         df: pd.DataFrame,
@@ -147,6 +150,317 @@ class ModelTrainer:
             self.y_pred_proba = self.model.predict_proba(self.X_test)
 
         return self.model
+
+    def _build_model_with_params(self, task_type: str, model_name: str, params: dict):
+        if task_type == "classification":
+            if model_name == "Random Forest":
+                return RandomForestClassifier(random_state=42, **params)
+            if model_name == "Gradient Boosting":
+                return GradientBoostingClassifier(random_state=42, **params)
+            if model_name == "XGBoost":
+                return xgb.XGBClassifier(random_state=42, eval_metric="logloss", verbosity=0, **params)
+            if model_name == "LightGBM":
+                return lgb.LGBMClassifier(random_state=42, verbose=-1, **params)
+            if model_name == "CatBoost":
+                return cb.CatBoostClassifier(random_state=42, verbose=0, **params)
+            if model_name == "Logistic Regression":
+                return LogisticRegression(max_iter=1000, random_state=42, **params)
+            if model_name == "Decision Tree":
+                return DecisionTreeClassifier(random_state=42, **params)
+            if model_name == "SVM":
+                return SVC(probability=True, random_state=42, **params)
+            if model_name == "K-Nearest Neighbors":
+                return KNeighborsClassifier(**params)
+            return RandomForestClassifier(random_state=42, **params)
+        else:
+            if model_name == "Random Forest":
+                return RandomForestRegressor(random_state=42, **params)
+            if model_name == "Gradient Boosting":
+                return GradientBoostingRegressor(random_state=42, **params)
+            if model_name == "XGBoost":
+                return xgb.XGBRegressor(random_state=42, verbosity=0, **params)
+            if model_name == "LightGBM":
+                return lgb.LGBMRegressor(random_state=42, verbose=-1, **params)
+            if model_name == "CatBoost":
+                return cb.CatBoostRegressor(random_state=42, verbose=0, **params)
+            if model_name == "Linear Regression":
+                return LinearRegression(**params)
+            if model_name == "Ridge Regression":
+                return Ridge(random_state=42, **params)
+            if model_name == "Lasso Regression":
+                return Lasso(random_state=42, **params)
+            if model_name == "Decision Tree":
+                return DecisionTreeRegressor(random_state=42, **params)
+            if model_name == "SVR":
+                return SVR(**params)
+            if model_name == "K-Nearest Neighbors":
+                return KNeighborsRegressor(**params)
+            return RandomForestRegressor(random_state=42, **params)
+
+    def tune_and_train(
+        self,
+        task_type: str,
+        model_name: str,
+        n_trials: int = 15,
+        random_state: int = 42,
+        pruning_enabled: bool = True,
+        tuning_metric: str | None = None,
+        trial_callback: object | None = None,
+    ):
+        import time
+        import optuna
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        self.task_type = task_type
+        self.model_name = model_name
+
+        scoring = tuning_metric or ("accuracy" if task_type == "classification" else "r2")
+        cv_folds = 3 if len(self.X_train) >= 30 else 2
+
+        def suggest_params(trial: optuna.Trial) -> dict:
+            p = {}
+            if "Random Forest" in model_name:
+                p["n_estimators"] = trial.suggest_int("n_estimators", 30, 150, step=10)
+                p["max_depth"] = trial.suggest_int("max_depth", 3, 16)
+                p["min_samples_split"] = trial.suggest_int("min_samples_split", 2, 8)
+                p["min_samples_leaf"] = trial.suggest_int("min_samples_leaf", 1, 4)
+            elif "Gradient Boosting" in model_name:
+                p["n_estimators"] = trial.suggest_int("n_estimators", 30, 120, step=10)
+                p["learning_rate"] = trial.suggest_float("learning_rate", 0.01, 0.25, log=True)
+                p["max_depth"] = trial.suggest_int("max_depth", 3, 8)
+                p["subsample"] = trial.suggest_float("subsample", 0.6, 1.0, step=0.1)
+            elif "XGBoost" in model_name:
+                p["n_estimators"] = trial.suggest_int("n_estimators", 30, 120, step=10)
+                p["learning_rate"] = trial.suggest_float("learning_rate", 0.01, 0.25, log=True)
+                p["max_depth"] = trial.suggest_int("max_depth", 3, 8)
+                p["subsample"] = trial.suggest_float("subsample", 0.6, 1.0, step=0.1)
+                p["colsample_bytree"] = trial.suggest_float("colsample_bytree", 0.6, 1.0, step=0.1)
+            elif "LightGBM" in model_name:
+                p["n_estimators"] = trial.suggest_int("n_estimators", 30, 120, step=10)
+                p["learning_rate"] = trial.suggest_float("learning_rate", 0.01, 0.25, log=True)
+                p["num_leaves"] = trial.suggest_int("num_leaves", 15, 63)
+                p["max_depth"] = trial.suggest_int("max_depth", 3, 10)
+            elif "CatBoost" in model_name:
+                p["iterations"] = trial.suggest_int("iterations", 30, 120, step=10)
+                p["learning_rate"] = trial.suggest_float("learning_rate", 0.01, 0.25, log=True)
+                p["depth"] = trial.suggest_int("depth", 4, 8)
+                p["l2_leaf_reg"] = trial.suggest_float("l2_leaf_reg", 1.0, 10.0, log=True)
+            elif "Logistic" in model_name or "Ridge" in model_name or "Lasso" in model_name:
+                if "Logistic" in model_name:
+                    p["C"] = trial.suggest_float("C", 1e-3, 50.0, log=True)
+                else:
+                    p["alpha"] = trial.suggest_float("alpha", 1e-3, 50.0, log=True)
+            elif "SVM" in model_name or "SVR" in model_name:
+                p["C"] = trial.suggest_float("C", 0.1, 30.0, log=True)
+                p["gamma"] = trial.suggest_categorical("gamma", ["scale", "auto"])
+            elif "Neighbors" in model_name:
+                p["n_neighbors"] = trial.suggest_int("n_neighbors", 3, min(20, max(3, len(self.X_train) - 1)))
+                p["weights"] = trial.suggest_categorical("weights", ["uniform", "distance"])
+            elif "Decision Tree" in model_name:
+                p["max_depth"] = trial.suggest_int("max_depth", 3, 16)
+                p["min_samples_split"] = trial.suggest_int("min_samples_split", 2, 8)
+            return p
+
+        study_history: list[dict] = []
+        best_so_far = float("-inf")
+
+        def objective(trial: optuna.Trial) -> float:
+            nonlocal best_so_far
+            t_start = time.time()
+            params = suggest_params(trial)
+            est = self._build_model_with_params(task_type, model_name, params)
+            scores = cross_val_score(est, self.X_train, self.y_train, cv=cv_folds, scoring=scoring)
+            mean_score = float(scores.mean())
+            if np.isnan(mean_score):
+                mean_score = float("-inf")
+
+            if mean_score > best_so_far:
+                best_so_far = mean_score
+
+            duration = round(time.time() - t_start, 3)
+            trial_record = {
+                "trial_number": trial.number + 1,
+                "value": round(mean_score, 4) if mean_score != float("-inf") else None,
+                "best_value": round(best_so_far, 4) if best_so_far != float("-inf") else None,
+                "params": params,
+                "state": "COMPLETE",
+                "duration_seconds": duration,
+            }
+            study_history.append(trial_record)
+
+            if callable(trial_callback):
+                trial_callback(trial_record)
+
+            return mean_score
+
+        sampler = optuna.samplers.TPESampler(seed=random_state)
+        pruner = (
+            optuna.pruners.MedianPruner(n_startup_trials=3, n_warmup_steps=1)
+            if pruning_enabled
+            else optuna.pruners.NopPruner()
+        )
+
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=sampler,
+            pruner=pruner,
+        )
+
+        study.optimize(objective, n_trials=n_trials, n_jobs=1)
+
+        best_params = study.best_params
+        best_score = float(study.best_value)
+
+        # Calculate parameter importances if multiple completed trials
+        param_importances: dict[str, float] = {}
+        try:
+            if len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]) >= 3:
+                raw_importances = optuna.importance.get_param_importances(study)
+                param_importances = {k: round(float(v), 4) for k, v in raw_importances.items()}
+        except Exception:
+            pass
+
+        self.optuna_results = {
+            "study_name": study.study_name,
+            "best_params": best_params,
+            "best_value": round(best_score, 4),
+            "direction": "maximize",
+            "metric_name": scoring,
+            "n_trials": len(study.trials),
+            "n_pruned": len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED]),
+            "n_completed": len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]),
+            "trials_history": study_history,
+            "param_importances": param_importances,
+        }
+
+        # Train final model on full X_train with best_params
+        self.model = self._build_model_with_params(task_type, model_name, best_params)
+        self.model.fit(self.X_train, self.y_train)
+        self.y_pred = self.model.predict(self.X_test)
+        if task_type == "classification" and hasattr(self.model, "predict_proba"):
+            self.y_pred_proba = self.model.predict_proba(self.X_test)
+
+        return self.model
+
+    def compute_shap_explanations(self, sample_limit: int = 200) -> dict | None:
+        """
+        Computes TreeSHAP feature explanations and local contribution breakdowns.
+        Supports tree-based algorithms and provides a clean fallback for linear models.
+        """
+        if self.model is None or self.X_test is None or len(self.X_test) == 0:
+            return None
+
+        import shap
+
+        model_type_name = self.model.__class__.__name__
+        is_tree_model = any(
+            t in model_type_name
+            for t in ["Forest", "GradientBoosting", "XGB", "LGBM", "CatBoost", "DecisionTree"]
+        )
+
+        n_samples = min(sample_limit, len(self.X_test))
+        X_sample = self.X_test.iloc[:n_samples].copy()
+
+        try:
+            if is_tree_model:
+                explainer = shap.TreeExplainer(self.model)
+                shap_raw = explainer.shap_values(X_sample)
+                expected_val = getattr(explainer, "expected_value", None)
+            elif "Logistic" in model_type_name or "Ridge" in model_type_name or "Lasso" in model_type_name or "Linear" in model_type_name:
+                bg = self.X_train.sample(min(100, len(self.X_train)), random_state=42)
+                explainer = shap.LinearExplainer(self.model, bg)
+                shap_raw = explainer.shap_values(X_sample)
+                expected_val = getattr(explainer, "expected_value", None)
+            else:
+                bg = self.X_train.sample(min(40, len(self.X_train)), random_state=42)
+                explainer = shap.Explainer(self.model.predict, bg)
+                shap_exp = explainer(X_sample)
+                shap_raw = shap_exp.values
+                expected_val = getattr(shap_exp, "base_values", None)
+
+            # Normalize SHAP values into 2D numpy array [n_samples, n_features]
+            if isinstance(shap_raw, list):
+                # Multi-class classification: pick positive class (binary) or average across classes
+                if len(shap_raw) == 2:
+                    shap_mat = np.array(shap_raw[1])
+                    base_val = float(expected_val[1]) if isinstance(expected_val, (list, np.ndarray)) else float(expected_val or 0.0)
+                else:
+                    shap_mat = np.mean(np.array([np.abs(c) for c in shap_raw]), axis=0)
+                    base_val = float(np.mean(expected_val)) if isinstance(expected_val, (list, np.ndarray)) else float(expected_val or 0.0)
+            elif isinstance(shap_raw, np.ndarray):
+                if shap_raw.ndim == 3:
+                    # [n_samples, n_features, n_classes]
+                    if shap_raw.shape[2] == 2:
+                        shap_mat = shap_raw[:, :, 1]
+                        base_val = float(expected_val[1]) if isinstance(expected_val, (list, np.ndarray)) else float(expected_val or 0.0)
+                    else:
+                        shap_mat = np.mean(np.abs(shap_raw), axis=2)
+                        base_val = float(np.mean(expected_val)) if isinstance(expected_val, (list, np.ndarray)) else float(expected_val or 0.0)
+                else:
+                    shap_mat = shap_raw
+                    base_val = float(expected_val[0]) if isinstance(expected_val, (list, np.ndarray)) and len(expected_val) > 0 else float(expected_val or 0.0)
+            else:
+                shap_mat = np.array(shap_raw)
+                base_val = 0.0
+
+            # 1. Global Mean |SHAP| values per feature
+            mean_abs = np.mean(np.abs(shap_mat), axis=0)
+            importance_list = [
+                {"feature": str(col), "importance": round(float(mean_abs[i]), 4)}
+                for i, col in enumerate(self.feature_names)
+            ]
+            importance_list.sort(key=lambda x: x["importance"], reverse=True)
+
+            # 2. Beeswarm points for top 12 features across samples
+            top_features = [item["feature"] for item in importance_list[:12]]
+            beeswarm_points = []
+            for j in range(len(X_sample)):
+                for f in top_features:
+                    f_idx = self.feature_names.index(f)
+                    f_val = X_sample.iloc[j][f]
+                    f_val_num = float(f_val) if isinstance(f_val, (int, float, np.number)) and not np.isnan(f_val) else 0.0
+                    beeswarm_points.append({
+                        "feature": f,
+                        "feature_value": round(f_val_num, 4),
+                        "shap_value": round(float(shap_mat[j, f_idx]), 4),
+                        "sample_index": j,
+                    })
+
+            # 3. Local explanations for up to 20 samples
+            n_local = min(20, len(X_sample))
+            sample_explanations = []
+            for k in range(n_local):
+                contributions = []
+                for i, f in enumerate(self.feature_names):
+                    contributions.append({
+                        "feature": f,
+                        "value": round(float(X_sample.iloc[k][f]), 4) if isinstance(X_sample.iloc[k][f], (int, float, np.number)) else str(X_sample.iloc[k][f]),
+                        "shap_value": round(float(shap_mat[k, i]), 4),
+                    })
+                contributions.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
+
+                pred_val = float(self.y_pred[k]) if hasattr(self.y_pred[k], "__float__") else 0.0
+                sample_explanations.append({
+                    "sample_index": k,
+                    "base_value": round(base_val, 4),
+                    "output_value": round(pred_val, 4),
+                    "contributions": contributions,
+                })
+
+            self.shap_results = {
+                "feature_importance": importance_list,
+                "base_value": round(base_val, 4),
+                "sample_explanations": sample_explanations,
+                "beeswarm_points": beeswarm_points,
+                "model_framework": "TreeSHAP" if is_tree_model else "SHAP Explainer",
+                "is_tree_model": is_tree_model,
+            }
+            return self.shap_results
+
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to compute SHAP explanations: %s", exc)
+            return None
 
     def get_metrics(self) -> dict:
         return (

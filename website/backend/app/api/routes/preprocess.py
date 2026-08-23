@@ -5,7 +5,11 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.preprocess import (
     DropColumnsRequest,
     EncodeRequest,
+    FeatureSelectionRequest,
+    FeatureSelectionResponse,
     MissingValuesRequest,
+    MutualInformationRequest,
+    MutualInformationResponse,
     OutlierRequest,
     ScaleRequest,
 )
@@ -55,3 +59,15 @@ def scale(request: ScaleRequest) -> ProjectSnapshot:
 def outliers(request: OutlierRequest) -> ProjectSnapshot:
     session = preprocessing_service.handle_outliers(_get_session(request.project_id), request)
     return dataset_store.build_snapshot(session)
+
+
+@router.post("/mutual-information", response_model=MutualInformationResponse)
+def mutual_information(request: MutualInformationRequest) -> MutualInformationResponse:
+    session = _get_session(request.project_id)
+    return preprocessing_service.calculate_mutual_information(session, request)
+
+
+@router.post("/feature-selection", response_model=FeatureSelectionResponse)
+def feature_selection(request: FeatureSelectionRequest) -> FeatureSelectionResponse:
+    session = _get_session(request.project_id)
+    return preprocessing_service.apply_feature_selection(session, request)
