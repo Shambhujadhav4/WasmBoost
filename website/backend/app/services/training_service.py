@@ -64,14 +64,56 @@ class TrainingService:
     def _save_onnx_artifact(self, session: ProjectSession, artifact_dir: Path, safe_model_name: str) -> Path | None:
         onnx_path = artifact_dir / f"{safe_model_name}.onnx"
         try:
+            model = session.model_trainer.model
+            model_type_name = model.__class__.__name__
             num_features = len(session.model_trainer.feature_names)
-            initial_type = [("float_input", FloatTensorType([None, num_features]))]
             options: dict[Any, Any] = {}
             if session.task_type == "classification":
-                options = {type(session.model_trainer.model): {"zipmap": False}}
+                options = {type(model): {"zipmap": False}}
 
+            # 1. CatBoost: use native ONNX export
+            if "CatBoost" in model_type_name:
+                model.save_model(str(onnx_path), format="onnx")
+                return onnx_path
+
+            # 2. XGBoost: use onnxmltools convert_xgboost
+            if "XGB" in model_type_name or hasattr(model, "get_booster"):
+                import onnxmltools
+                from onnxmltools.convert.common.data_types import FloatTensorType as OnnxMLFloatTensorType
+                initial_type = [("float_input", OnnxMLFloatTensorType([None, num_features]))]
+                booster = model.get_booster() if hasattr(model, "get_booster") else None
+                saved_feature_names = getattr(booster, "feature_names", None) if booster is not None else None
+                try:
+                    if booster is not None:
+                        booster.feature_names = None
+                    onx = onnxmltools.convert_xgboost(
+                        model,
+                        initial_types=initial_type,
+                        target_opset=15,
+                    )
+                finally:
+                    if booster is not None and saved_feature_names is not None:
+                        booster.feature_names = saved_feature_names
+                onnx_path.write_bytes(onx.SerializeToString())
+                return onnx_path
+
+            # 3. LightGBM: use onnxmltools convert_lightgbm
+            if "LGBM" in model_type_name or model_type_name.startswith("LGBM"):
+                import onnxmltools
+                from onnxmltools.convert.common.data_types import FloatTensorType as OnnxMLFloatTensorType
+                initial_type = [("float_input", OnnxMLFloatTensorType([None, num_features]))]
+                onx = onnxmltools.convert_lightgbm(
+                    model,
+                    initial_types=initial_type,
+                    target_opset=15,
+                )
+                onnx_path.write_bytes(onx.SerializeToString())
+                return onnx_path
+
+            # 4. Standard Scikit-Learn: use skl2onnx to_onnx
+            initial_type = [("float_input", FloatTensorType([None, num_features]))]
             onx = to_onnx(
-                session.model_trainer.model,
+                model,
                 initial_types=initial_type,
                 options=options,
                 target_opset=15,

@@ -14,7 +14,10 @@ from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.model_selection import KFold, StratifiedKFold, cross_val_score
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+import xgboost as xgb
+import lightgbm as lgb
+import catboost as cb
 
 from app.schemas.results import ModelRecommendation, WorkflowRecommendation
 from app.services.dataset_service import ProjectSession
@@ -33,14 +36,20 @@ class RecommendationService:
 
     CLASSIFICATION_MODELS = [
         _BenchmarkModel("Logistic Regression", LogisticRegression(max_iter=1000, random_state=42)),
-        _BenchmarkModel("Random Forest", RandomForestClassifier(n_estimators=120, random_state=42)),
+        _BenchmarkModel("Random Forest", RandomForestClassifier(n_estimators=100, random_state=42)),
         _BenchmarkModel("Gradient Boosting", GradientBoostingClassifier(random_state=42)),
+        _BenchmarkModel("XGBoost", xgb.XGBClassifier(n_estimators=100, random_state=42, eval_metric="logloss", verbosity=0)),
+        _BenchmarkModel("LightGBM", lgb.LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)),
+        _BenchmarkModel("CatBoost", cb.CatBoostClassifier(iterations=100, random_state=42, verbose=0)),
     ]
 
     REGRESSION_MODELS = [
         _BenchmarkModel("Ridge Regression", Ridge(random_state=42)),
-        _BenchmarkModel("Random Forest", RandomForestRegressor(n_estimators=120, random_state=42)),
+        _BenchmarkModel("Random Forest", RandomForestRegressor(n_estimators=100, random_state=42)),
         _BenchmarkModel("Gradient Boosting", GradientBoostingRegressor(random_state=42)),
+        _BenchmarkModel("XGBoost", xgb.XGBRegressor(n_estimators=100, random_state=42, verbosity=0)),
+        _BenchmarkModel("LightGBM", lgb.LGBMRegressor(n_estimators=100, random_state=42, verbose=-1)),
+        _BenchmarkModel("CatBoost", cb.CatBoostRegressor(iterations=100, random_state=42, verbose=0)),
     ]
 
     def _is_categorical_like(self, series: pd.Series) -> bool:
@@ -112,6 +121,15 @@ class RecommendationService:
         if metric_note:
             notes.append(metric_note)
 
+        # Add algorithmic recommendations (LightGBM for large datasets, CatBoost for categorical features, XGBoost for tabular accuracy)
+        categorical_cols = [
+            col for col in feature_columns if self._is_categorical_like(df[col])
+        ]
+        algorithmic_notes = self._generate_algorithmic_insights(
+            df, feature_columns, categorical_cols
+        )
+        notes.extend(algorithmic_notes)
+
         best_model = candidate_models[0] if candidate_models else None
         if best_model is None:
             notes.append("No model could be benchmarked successfully on this dataset.")
@@ -127,6 +145,37 @@ class RecommendationService:
             suggested_preprocessing_steps=suggested_steps,
             notes=notes,
         )
+
+    def _generate_algorithmic_insights(
+        self,
+        df: pd.DataFrame,
+        feature_columns: list[str],
+        categorical_cols: list[str],
+    ) -> list[str]:
+        insights = []
+        n_rows = len(df)
+        n_features = len(feature_columns)
+        n_categorical = len(categorical_cols)
+        cat_ratio = n_categorical / max(1, n_features)
+
+        # 1. Large dataset recommendation (LightGBM)
+        if n_rows >= 10000 or (n_rows * n_features) >= 50000:
+            insights.append(
+                f"Large dataset detected ({n_rows:,} rows, {n_features} features): LightGBM is highly recommended for its fast histogram-based tree learning and low memory footprint."
+            )
+
+        # 2. High categorical feature count recommendation (CatBoost)
+        if n_categorical >= 3 or cat_ratio >= 0.3:
+            insights.append(
+                f"High categorical density ({n_categorical}/{n_features} categorical features): CatBoost is strongly recommended for its native categorical handling and target statistics without one-hot explosion."
+            )
+
+        # 3. General tabular accuracy recommendation (XGBoost)
+        insights.append(
+            "XGBoost is recommended for maximum predictive performance and fine-grained regularization on tabular data."
+        )
+
+        return insights
 
     def _resolve_benchmark_metric(self, task_type: str, requested: str | None) -> tuple[str, str | None]:
         available = (
@@ -256,18 +305,27 @@ class RecommendationService:
         if len(data) < 10:
             return [], ["Target column has too many missing values after filtering."]
 
-        X = data[feature_columns]
-        y = data[target_column]
+        # For fast interactive benchmarking on large datasets, benchmark on representative sample
+        data_benchmark = data.sample(n=2000, random_state=42) if len(data) > 2000 else data
+        X = data_benchmark[feature_columns]
+        y = data_benchmark[target_column]
 
-        preprocessor = self._build_preprocessor(data, feature_columns)
+        # For classification, encode string/object classes for cross_val_score compatibility across all models
+        if task_type == "classification" and not pd.api.types.is_numeric_dtype(y):
+            le = LabelEncoder()
+            y_eval = pd.Series(le.fit_transform(y), index=y.index, name=y.name)
+        else:
+            y_eval = y
+
+        preprocessor = self._build_preprocessor(data_benchmark, feature_columns)
 
         if task_type == "classification":
             models = self.CLASSIFICATION_MODELS
-            cv, cv_notes = self._classification_cv(y)
+            cv, cv_notes = self._classification_cv(y_eval)
             notes.extend(cv_notes)
         else:
             models = self.REGRESSION_MODELS
-            folds = max(2, min(5, len(y)))
+            folds = max(2, min(5, len(y_eval)))
             cv = KFold(n_splits=folds, shuffle=True, random_state=42)
 
         results: list[ModelRecommendation] = []
@@ -280,7 +338,7 @@ class RecommendationService:
                 ]
             )
             try:
-                scores = cross_val_score(pipeline, X, y, cv=cv, scoring=benchmark_metric)
+                scores = cross_val_score(pipeline, X, y_eval, cv=cv, scoring=benchmark_metric)
             except Exception as exc:
                 notes.append(f"Skipped {model.name}: {exc}")
                 continue
@@ -290,7 +348,7 @@ class RecommendationService:
                 if metric == benchmark_metric:
                     continue
                 try:
-                    extra_scores = cross_val_score(pipeline, X, y, cv=cv, scoring=metric)
+                    extra_scores = cross_val_score(pipeline, X, y_eval, cv=cv, scoring=metric)
                     metric_scores[metric] = float(extra_scores.mean())
                 except Exception:
                     continue
@@ -305,7 +363,8 @@ class RecommendationService:
             )
 
         results.sort(key=lambda item: item.mean_score, reverse=True)
-        return results[:5], notes
+        return results[:6], notes
 
 
 recommendation_service = RecommendationService()
+

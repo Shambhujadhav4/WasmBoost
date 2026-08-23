@@ -5,6 +5,9 @@ export const CLASSIFICATION_MODELS = [
   "SVM",
   "K-Nearest Neighbors",
   "Gradient Boosting",
+  "XGBoost",
+  "LightGBM",
+  "CatBoost",
 ] as const;
 
 export const REGRESSION_MODELS = [
@@ -16,4 +19,8 @@ export const REGRESSION_MODELS = [
   "SVR",
   "Gradient Boosting",
   "K-Nearest Neighbors",
+  "XGBoost",
+  "LightGBM",
+  "CatBoost",
 ] as const;
+

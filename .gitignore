@@ -60,6 +60,8 @@ models/
 website/backend/models/
 uploads/
 website/backend/uploads/
+catboost_info/
+
 
 # Personal local datasets (do not push)
 healthcare_real_time_dataset.csv

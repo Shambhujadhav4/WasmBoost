@@ -23,6 +23,10 @@ from sklearn.ensemble import (
 from sklearn.svm import SVC, SVR
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.preprocessing import LabelEncoder
+import xgboost as xgb
+import lightgbm as lgb
+import catboost as cb
 
 
 class ModelTrainer:
@@ -35,6 +39,9 @@ class ModelTrainer:
         "SVM": SVC(probability=True, random_state=42),
         "K-Nearest Neighbors": KNeighborsClassifier(),
         "Gradient Boosting": GradientBoostingClassifier(random_state=42),
+        "XGBoost": xgb.XGBClassifier(n_estimators=100, random_state=42, eval_metric="logloss", verbosity=0),
+        "LightGBM": lgb.LGBMClassifier(n_estimators=100, random_state=42, verbose=-1),
+        "CatBoost": cb.CatBoostClassifier(iterations=100, random_state=42, verbose=0),
     }
 
     REGRESSION_MODELS = {
@@ -46,6 +53,9 @@ class ModelTrainer:
         "SVR": SVR(),
         "Gradient Boosting": GradientBoostingRegressor(random_state=42),
         "K-Nearest Neighbors": KNeighborsRegressor(),
+        "XGBoost": xgb.XGBRegressor(n_estimators=100, random_state=42, verbosity=0),
+        "LightGBM": lgb.LGBMRegressor(n_estimators=100, random_state=42, verbose=-1),
+        "CatBoost": cb.CatBoostRegressor(iterations=100, random_state=42, verbose=0),
     }
 
     def __init__(self):
@@ -57,6 +67,7 @@ class ModelTrainer:
         self.feature_names: list = []
         self.task_type: str = ""
         self.model_name: str = ""
+        self.label_encoder: LabelEncoder | None = None
 
     def prepare_data(
         self,
@@ -70,6 +81,8 @@ class ModelTrainer:
         X = df[feature_cols]
         y = df[target_col]
         self.feature_names = feature_cols
+        self.task_type = task_type or ""
+
         stratify = None
         if task_type == "classification" and y.nunique(dropna=False) > 1:
             class_counts = y.value_counts(dropna=False)
@@ -91,9 +104,20 @@ class ModelTrainer:
                 )
 
             stratify = y
+
+        # For classification, encode string/object classes so gradient boosting models work seamlessly
+        if task_type == "classification" and not pd.api.types.is_numeric_dtype(y):
+            self.label_encoder = LabelEncoder()
+            y_to_split = pd.Series(self.label_encoder.fit_transform(y), index=y.index, name=y.name)
+            if stratify is not None:
+                stratify = y_to_split
+        else:
+            self.label_encoder = None
+            y_to_split = y
+
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
             X,
-            y,
+            y_to_split,
             test_size=test_size,
             random_state=random_state,
             stratify=stratify,
@@ -132,9 +156,19 @@ class ModelTrainer:
         )
 
     def _classification_metrics(self) -> dict:
-        classes = list(
-            getattr(self.model, "classes_", pd.Index(self.y_test).drop_duplicates().tolist())
-        )
+        if self.label_encoder is not None:
+            classes = list(range(len(self.label_encoder.classes_)))
+            display_classes = list(self.label_encoder.classes_)
+            y_test_eval = self.y_test
+            y_pred_eval = self.y_pred
+        else:
+            classes = list(
+                getattr(self.model, "classes_", pd.Index(self.y_test).drop_duplicates().tolist())
+            )
+            display_classes = classes
+            y_test_eval = self.y_test
+            y_pred_eval = self.y_pred
+
         average = "binary" if len(classes) == 2 else "macro"
         pos_label = classes[1] if len(classes) == 2 else None
 
@@ -147,16 +181,18 @@ class ModelTrainer:
             f1_kwargs["pos_label"] = pos_label
 
         metrics = {
-            "accuracy": accuracy_score(self.y_test, self.y_pred),
-            "f1_score": f1_score(self.y_test, self.y_pred, **f1_kwargs),
-            "precision": precision_score(self.y_test, self.y_pred, **precision_kwargs),
-            "recall": recall_score(self.y_test, self.y_pred, **recall_kwargs),
+            "accuracy": accuracy_score(y_test_eval, y_pred_eval),
+            "f1_score": f1_score(y_test_eval, y_pred_eval, **f1_kwargs),
+            "precision": precision_score(y_test_eval, y_pred_eval, **precision_kwargs),
+            "recall": recall_score(y_test_eval, y_pred_eval, **recall_kwargs),
             "metric_average": average,
             "positive_class": pos_label,
-            "confusion_matrix": confusion_matrix(self.y_test, self.y_pred, labels=classes),
+            "confusion_matrix": confusion_matrix(y_test_eval, y_pred_eval, labels=classes),
             "classification_report": classification_report(
-                self.y_test,
-                self.y_pred,
+                y_test_eval,
+                y_pred_eval,
+                labels=classes,
+                target_names=[str(c) for c in display_classes] if len(display_classes) == len(classes) else None,
                 zero_division=0,
             ),
         }
@@ -226,3 +262,4 @@ class ModelTrainer:
 
         fresh_model = base.clone(self.model)
         return cross_val_score(fresh_model, X_all, y_all, cv=cv, scoring=scoring)
+
