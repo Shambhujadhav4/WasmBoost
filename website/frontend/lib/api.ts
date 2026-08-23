@@ -3,11 +3,26 @@ import type {
   DatasetSummary,
   FeatureImportanceRow,
   ProjectSnapshot,
+  TelemetryEvent,
+  TrainStatusResponse,
+  TrainTaskResponse,
   WorkflowRecommendation,
 } from "./types";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
+
+const WS_BASE_URL =
+  process.env.NEXT_PUBLIC_WS_BASE_URL ??
+  API_BASE_URL.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+
+export function getTrainTelemetryWsUrl(taskId: string): string {
+  return `${WS_BASE_URL}/train/ws/${taskId}`;
+}
+
+export function getTrainTelemetrySseUrl(taskId: string): string {
+  return `${API_BASE_URL}/train/telemetry/${taskId}`;
+}
 
 type UploadParams = {
   file: File;
@@ -197,7 +212,7 @@ export async function handleOutliers(params: {
   });
 }
 
-export async function trainModel(params: {
+export async function dispatchTrainTask(params: {
   projectId: string;
   taskType: "classification" | "regression";
   modelName: string;
@@ -206,8 +221,8 @@ export async function trainModel(params: {
   testSize: number;
   randomState: number;
   runCv: boolean;
-}): Promise<ProjectSnapshot> {
-  return postJson<ProjectSnapshot>(`${API_BASE_URL}/train`, {
+}): Promise<TrainTaskResponse> {
+  return postJson<TrainTaskResponse>(`${API_BASE_URL}/train`, {
     project_id: params.projectId,
     task_type: params.taskType,
     model_name: params.modelName,
@@ -218,6 +233,168 @@ export async function trainModel(params: {
     run_cv: params.runCv,
   });
 }
+
+export async function fetchTrainStatus(taskId: string): Promise<TrainStatusResponse> {
+  const response = await safeFetch(`${API_BASE_URL}/train/status/${taskId}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, "Unable to load training status."));
+  }
+
+  return response.json();
+}
+
+export async function trainModelWithTelemetry(
+  params: {
+    projectId: string;
+    taskType: "classification" | "regression";
+    modelName: string;
+    targetColumn: string;
+    featureColumns: string[];
+    testSize: number;
+    randomState: number;
+    runCv: boolean;
+  },
+  onTelemetry?: (event: TelemetryEvent) => void,
+): Promise<ProjectSnapshot> {
+  // 1. Dispatch background task
+  const dispatchRes = await dispatchTrainTask(params);
+  const taskId = dispatchRes.task_id;
+
+  onTelemetry?.({
+    task_id: taskId,
+    project_id: params.projectId,
+    status: "queued",
+    progress: 5,
+    message: dispatchRes.message || "Training task queued...",
+  });
+
+  // 2. Connect to WebSocket telemetry stream
+  return new Promise<ProjectSnapshot>((resolve, reject) => {
+    let ws: WebSocket | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+    let resolved = false;
+
+    const cleanup = () => {
+      if (ws) {
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+        ws = null;
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+        fallbackInterval = null;
+      }
+    };
+
+    const handleSuccess = (snapshot: ProjectSnapshot) => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      resolve(snapshot);
+    };
+
+    const handleFailure = (errorMessage: string) => {
+      if (resolved) return;
+      resolved = true;
+      cleanup();
+      reject(new Error(errorMessage));
+    };
+
+    // Setup polling fallback if WebSocket doesn't complete
+    const startPollingFallback = () => {
+      if (fallbackInterval || resolved) return;
+      fallbackInterval = setInterval(async () => {
+        try {
+          const statusRes = await fetchTrainStatus(taskId);
+          if (statusRes.state === "SUCCESS" && statusRes.result) {
+            onTelemetry?.({
+              task_id: taskId,
+              project_id: params.projectId,
+              status: "completed",
+              progress: 100,
+              message: "Training completed successfully!",
+              snapshot: statusRes.result as ProjectSnapshot,
+            });
+            handleSuccess(statusRes.result as ProjectSnapshot);
+          } else if (statusRes.state === "FAILURE") {
+            handleFailure(statusRes.error || "Background training failed.");
+          } else if (statusRes.progress !== undefined) {
+            onTelemetry?.({
+              task_id: taskId,
+              project_id: params.projectId,
+              status: statusRes.status || "training",
+              progress: statusRes.progress ?? 50,
+              message: statusRes.message || "Model training in progress...",
+            });
+          }
+        } catch {
+          // Keep polling until timeout or completion
+        }
+      }, 1500);
+    };
+
+    try {
+      const wsUrl = getTrainTelemetryWsUrl(taskId);
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const data: TelemetryEvent = JSON.parse(event.data);
+          onTelemetry?.(data);
+
+          if (data.status === "completed" && data.snapshot) {
+            handleSuccess(data.snapshot);
+          } else if (data.status === "failed") {
+            handleFailure(data.error || data.message || "Training task failed.");
+          }
+        } catch {
+          // ignore non-json messages
+        }
+      };
+
+      ws.onerror = () => {
+        // Fallback to HTTP polling if WebSocket is blocked or disconnected
+        startPollingFallback();
+      };
+
+      ws.onclose = () => {
+        if (!resolved) {
+          startPollingFallback();
+        }
+      };
+    } catch {
+      startPollingFallback();
+    }
+
+    // Overall timeout of 5 minutes
+    setTimeout(() => {
+      if (!resolved) {
+        handleFailure("Training task timed out after 5 minutes.");
+      }
+    }, 300000);
+  });
+}
+
+export async function trainModel(params: {
+  projectId: string;
+  taskType: "classification" | "regression";
+  modelName: string;
+  targetColumn: string;
+  featureColumns: string[];
+  testSize: number;
+  randomState: number;
+  runCv: boolean;
+}): Promise<ProjectSnapshot> {
+  return trainModelWithTelemetry(params);
+}
+
 
 export async function fetchFeatureImportance(
   projectId: string,

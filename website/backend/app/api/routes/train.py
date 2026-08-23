@@ -1,23 +1,48 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 from pathlib import Path
+from typing import Any, AsyncGenerator, Literal
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+import redis.asyncio as aioredis
+from celery.result import AsyncResult
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi.responses import FileResponse, StreamingResponse
 
-from app.schemas.results import ProjectSnapshot
-from app.schemas.training import TrainRequest
+from app.core.celery_app import celery_app
+from app.core.config import settings
+from app.schemas.training import TrainRequest, TrainStatusResponse, TrainTaskResponse
 from app.services.dataset_service import dataset_store
-from app.services.training_service import training_service
 from app.services.visualization_service import visualization_service
+from app.tasks.training import get_task_state, train_model_task
 
+
+def _get_task_info(task_id: str) -> tuple[str, Any, Any]:
+    # 1. Try checking local in-memory registry first
+    local_state = get_task_state(task_id)
+    if local_state is not None:
+        return (
+            local_state.get("state", "PENDING"),
+            local_state.get("result"),
+            local_state.get("info"),
+        )
+
+    # 2. Query Celery result backend
+    try:
+        res = AsyncResult(task_id, app=celery_app)
+        state = res.state
+        result = res.result if res.ready() else None
+        info = res.info if state == "PROGRESS" else None
+        return state, result, info
+    except Exception as exc:
+        logger.debug("Could not read Celery task meta: %s", exc)
+        return "PENDING", None, None
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/train", tags=["train"])
-
-
-from typing import Literal
-
-from app.core.executor import run_in_process
 
 
 def _get_artifact_file(session, format_type: str) -> tuple[Path, str]:
@@ -58,20 +83,276 @@ def _get_artifact_file(session, format_type: str) -> tuple[Path, str]:
     return artifact_path, download_name
 
 
-@router.post("", response_model=ProjectSnapshot)
-async def train_model(request: TrainRequest) -> ProjectSnapshot:
+@router.post("", response_model=TrainTaskResponse, status_code=status.HTTP_202_ACCEPTED)
+async def train_model(request: TrainRequest) -> TrainTaskResponse:
     try:
         session = dataset_store.get_project(request.project_id)
+        dataset_store.clear_model_state(session)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     try:
-        # Run training in a background thread so it doesn't block FastAPI
-        session = await run_in_process(training_service.train, session, request)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            task = train_model_task.apply_async(
+                args=[request.project_id, request.model_dump()]
+            )
+        except Exception as broker_exc:
+            logger.warning(
+                "Celery broker/backend unreachable (%s). Executing task in fallback mode.",
+                broker_exc,
+            )
+            task = train_model_task.apply(
+                args=[request.project_id, request.model_dump()]
+            )
 
-    return dataset_store.build_snapshot(session)
+        return TrainTaskResponse(
+            task_id=task.id or "task-local",
+            project_id=request.project_id,
+            status="queued",
+            message=f"Model training task for {request.model_name} dispatched to background queue.",
+        )
+    except Exception as exc:
+        logger.exception("Failed to dispatch Celery training task: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to dispatch background training task: {exc}",
+        ) from exc
+
+
+
+
+@router.get("/status/{task_id}", response_model=TrainStatusResponse)
+def get_train_status(task_id: str) -> TrainStatusResponse:
+    state, result, info = _get_task_info(task_id)
+
+    if state == "SUCCESS":
+        return TrainStatusResponse(
+            task_id=task_id,
+            state=state,
+            status="completed",
+            progress=100,
+            message="Model training completed successfully.",
+            result=result if isinstance(result, dict) else None,
+        )
+    elif state == "PROGRESS":
+        info_dict = info or {}
+        return TrainStatusResponse(
+            task_id=task_id,
+            state=state,
+            status=info_dict.get("status", "processing"),
+            progress=info_dict.get("progress", 50),
+            message=info_dict.get("message", "Training in progress..."),
+        )
+    elif state == "FAILURE":
+        return TrainStatusResponse(
+            task_id=task_id,
+            state=state,
+            status="failed",
+            progress=100,
+            error=str(result),
+            message=f"Training task failed: {result}",
+        )
+    else:  # PENDING, RECEIVED, STARTED
+        return TrainStatusResponse(
+            task_id=task_id,
+            state=state,
+            status="queued",
+            progress=5,
+            message="Task is queued and waiting for an available worker...",
+        )
+
+
+@router.websocket("/ws/{task_id}")
+async def websocket_training_telemetry(websocket: WebSocket, task_id: str) -> None:
+    await websocket.accept()
+    channel_name = f"telemetry:{task_id}"
+    redis_client = None
+    pubsub = None
+
+    try:
+        # 1. Send initial status
+        state, result, info = _get_task_info(task_id)
+        initial_event = {
+            "task_id": task_id,
+            "status": "connected",
+            "progress": 5 if state == "PENDING" else (100 if state == "SUCCESS" else 50),
+            "message": f"Connected to telemetry stream for task {task_id}.",
+            "state": state,
+        }
+        if state == "SUCCESS" and isinstance(result, dict):
+            initial_event["status"] = "completed"
+            initial_event["progress"] = 100
+            initial_event["snapshot"] = result
+        await websocket.send_text(json.dumps(initial_event))
+
+        if state in ("SUCCESS", "FAILURE"):
+            try:
+                while True:
+                    await websocket.receive_text()
+            except Exception:
+                pass
+            return
+
+        # 2. Try subscribing to Redis
+        try:
+            redis_client = aioredis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                socket_timeout=0.5,
+                socket_connect_timeout=0.2,
+            )
+            pubsub = redis_client.pubsub()
+            await asyncio.wait_for(pubsub.subscribe(channel_name), timeout=0.3)
+        except Exception as exc:
+            logger.info("Redis pubsub not available for WebSocket, using Celery polling fallback: %s", exc)
+            pubsub = None
+
+        while True:
+            if pubsub is not None:
+                try:
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.2)
+                    if message and message["type"] == "message":
+                        raw_data = message["data"]
+                        await websocket.send_text(raw_data)
+                        try:
+                            parsed = json.loads(raw_data)
+                            if parsed.get("status") in ("completed", "failed"):
+                                break
+                        except Exception:
+                            pass
+                except Exception:
+                    pubsub = None
+
+            # Check Celery task status
+            curr_state, curr_result, curr_info = _get_task_info(task_id)
+            if curr_state == "SUCCESS":
+                completion_event = {
+                    "task_id": task_id,
+                    "status": "completed",
+                    "progress": 100,
+                    "message": "Model training completed successfully.",
+                    "snapshot": curr_result if isinstance(curr_result, dict) else None,
+                }
+                await websocket.send_text(json.dumps(completion_event))
+                try:
+                    while True:
+                        await websocket.receive_text()
+                except Exception:
+                    pass
+                break
+            elif curr_state == "FAILURE":
+                failure_event = {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "progress": 100,
+                    "error": str(curr_result),
+                    "message": f"Training failed: {curr_result}",
+                }
+                await websocket.send_text(json.dumps(failure_event))
+                try:
+                    while True:
+                        await websocket.receive_text()
+                except Exception:
+                    pass
+                break
+            elif curr_state == "PROGRESS" and curr_info:
+                await websocket.send_text(json.dumps(curr_info))
+
+            await asyncio.sleep(0.1)
+
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from telemetry stream %s", task_id)
+    except Exception as exc:
+        logger.warning("Error in telemetry WebSocket for task %s: %s", task_id, exc)
+    finally:
+        if pubsub is not None:
+            try:
+                await pubsub.unsubscribe(channel_name)
+                await pubsub.close()
+            except Exception:
+                pass
+        if redis_client is not None:
+            try:
+                await redis_client.close()
+            except Exception:
+                pass
+
+
+@router.get("/telemetry/{task_id}")
+async def sse_training_telemetry(task_id: str) -> StreamingResponse:
+    async def event_generator() -> AsyncGenerator[str, None]:
+        channel_name = f"telemetry:{task_id}"
+        redis_client = None
+        pubsub = None
+        try:
+            try:
+                redis_client = aioredis.from_url(
+                    settings.redis_url,
+                    decode_responses=True,
+                    socket_timeout=0.5,
+                    socket_connect_timeout=0.2,
+                )
+                pubsub = redis_client.pubsub()
+                await asyncio.wait_for(pubsub.subscribe(channel_name), timeout=0.3)
+            except Exception:
+                pubsub = None
+
+            while True:
+                if pubsub is not None:
+                    try:
+                        message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.2)
+                        if message and message["type"] == "message":
+                            yield f"data: {message['data']}\n\n"
+                            try:
+                                parsed = json.loads(message["data"])
+                                if parsed.get("status") in ("completed", "failed"):
+                                    break
+                            except Exception:
+                                pass
+                    except Exception:
+                        pubsub = None
+
+                curr_state, curr_result, curr_info = _get_task_info(task_id)
+                if curr_state == "SUCCESS":
+                    completion_event = {
+                        "task_id": task_id,
+                        "status": "completed",
+                        "progress": 100,
+                        "message": "Model training completed successfully.",
+                        "snapshot": curr_result if isinstance(curr_result, dict) else None,
+                    }
+                    yield f"data: {json.dumps(completion_event)}\n\n"
+                    break
+                elif curr_state == "FAILURE":
+                    failure_event = {
+                        "task_id": task_id,
+                        "status": "failed",
+                        "progress": 100,
+                        "error": str(curr_result),
+                    }
+                    yield f"data: {json.dumps(failure_event)}\n\n"
+                    break
+                elif curr_state == "PROGRESS" and curr_info:
+                    yield f"data: {json.dumps(curr_info)}\n\n"
+
+                await asyncio.sleep(0.1)
+
+        finally:
+            if pubsub is not None:
+                try:
+                    await pubsub.unsubscribe(channel_name)
+                    await pubsub.close()
+                except Exception:
+                    pass
+            if redis_client is not None:
+                try:
+                    await redis_client.close()
+                except Exception:
+                    pass
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 
 
 @router.get("/{project_id}/feature-importance")

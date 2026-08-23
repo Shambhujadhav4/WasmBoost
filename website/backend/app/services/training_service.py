@@ -149,7 +149,19 @@ class TrainingService:
         session.artifact_path = str(skops_path)
         session.artifact_filename = skops_path.name
 
-    def train(self, session: ProjectSession, request: TrainRequest) -> ProjectSession:
+    def train(
+        self,
+        session: ProjectSession,
+        request: TrainRequest,
+        progress_callback: Any | None = None,
+    ) -> ProjectSession:
+        if progress_callback:
+            progress_callback({
+                "status": "preparing",
+                "progress": 15,
+                "message": f"Preparing dataset and splitting train/test sets (test_size={request.test_size})...",
+            })
+
         trainer = ModelTrainer()
         trainer.prepare_data(
             session.processed_data,
@@ -159,9 +171,31 @@ class TrainingService:
             request.random_state,
             request.task_type,
         )
+
+        if progress_callback:
+            progress_callback({
+                "status": "training",
+                "progress": 35,
+                "message": f"Fitting {request.model_name} estimator on {len(trainer.X_train)} training samples...",
+            })
+
         trainer.train(request.task_type, request.model_name)
+
+        if progress_callback:
+            progress_callback({
+                "status": "evaluating",
+                "progress": 65,
+                "message": "Computing test set evaluation metrics & confusion matrices...",
+            })
+
         metrics = trainer.get_metrics()
         if request.run_cv:
+            if progress_callback:
+                progress_callback({
+                    "status": "cross_validating",
+                    "progress": 75,
+                    "message": f"Executing 5-fold cross-validation for {request.model_name}...",
+                })
             metrics["cv_scores"] = trainer.get_cross_val_scores(cv=5)
 
         session.model_trainer = trainer
@@ -169,8 +203,31 @@ class TrainingService:
         session.target_column = request.target_column
         session.feature_columns = request.feature_columns.copy()
         session.task_type = request.task_type
+
+        if progress_callback:
+            progress_callback({
+                "status": "exporting",
+                "progress": 90,
+                "message": "Generating secure .skops and production .onnx model artifacts...",
+            })
+
         self._save_artifact(session)
+
+        # Persist updated session to disk
+        from app.services.dataset_service import dataset_store
+        dataset_store.save_project(session)
+
+        if progress_callback:
+            snapshot_dict = dataset_store.build_snapshot(session).model_dump()
+            progress_callback({
+                "status": "completed",
+                "progress": 100,
+                "message": f"{request.model_name} training and export completed successfully!",
+                "snapshot": snapshot_dict,
+            })
+
         return session
 
 
 training_service = TrainingService()
+

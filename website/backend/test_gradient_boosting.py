@@ -230,7 +230,13 @@ def test_api_endpoints_gradient_boosting():
     assert rec_data["best_model"] is not None
     print(f"[OK] Recommendation returned best model: {rec_data['best_model']['model_name']}")
 
-    # 3. Train XGBoost
+    # 3. Train XGBoost (Async Celery dispatch)
+    from app.core.celery_app import celery_app
+    celery_app.conf.task_always_eager = True
+    celery_app.conf.result_backend = "cache+memory://"
+    celery_app.conf.task_store_eager_result = True
+
+
     train_resp = client.post(
         "/api/train",
         json={
@@ -244,11 +250,17 @@ def test_api_endpoints_gradient_boosting():
             "run_cv": True,
         },
     )
-    assert train_resp.status_code == 200
-    snapshot = train_resp.json()
-    assert snapshot["skops_artifact_available"] is True
-    assert snapshot["onnx_artifact_available"] is True
-    print(f"[OK] API Training for XGBoost succeeded with artifacts: skops={snapshot['skops_artifact_filename']}, onnx={snapshot['onnx_artifact_filename']}")
+    assert train_resp.status_code == 202
+    train_data = train_resp.json()
+    assert "task_id" in train_data
+    task_id = train_data["task_id"]
+
+    # Verify session has artifacts
+    updated_session = dataset_store.get_project(project_id)
+    assert updated_session.artifact_skops_path is not None
+    assert updated_session.artifact_onnx_path is not None
+    print(f"[OK] API Training for XGBoost dispatched task {task_id} and generated artifacts: skops={Path(updated_session.artifact_skops_path).name}, onnx={Path(updated_session.artifact_onnx_path).name}")
+
 
     # 4. Download .skops
     skops_resp = client.get(f"/api/train/{project_id}/artifact?format=skops")

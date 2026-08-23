@@ -14,3 +14,32 @@ class TrainRequest(BaseModel):
     test_size: float = 0.2
     random_state: int = 42
     run_cv: bool = True
+
+
+class TrainTaskResponse(BaseModel):
+    task_id: str
+    project_id: str
+    status: str = "queued"
+    message: str = "Model training task dispatched to background queue."
+
+
+class TrainStatusResponse(BaseModel):
+    task_id: str
+    state: str
+    status: str | None = None
+    progress: int | None = None
+    message: str | None = None
+    result: dict[str, object] | None = None
+    error: str | None = None
+
+
+class TelemetryMessage(BaseModel):
+    task_id: str
+    project_id: str
+    status: str
+    progress: int
+    message: str
+    timestamp: str | None = None
+    snapshot: dict[str, object] | None = None
+    error: str | None = None
+

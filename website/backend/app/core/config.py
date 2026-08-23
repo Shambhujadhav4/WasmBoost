@@ -35,6 +35,16 @@ class Settings:
     cors_origin_regex: str = os.getenv(
         "DATAPILOT_CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app"
     )
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    celery_broker_url: str = os.getenv(
+        "CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    )
+    celery_result_backend: str = os.getenv(
+        "CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    )
+    celery_task_always_eager: bool = os.getenv(
+        "CELERY_TASK_ALWAYS_EAGER", "false"
+    ).lower() in {"1", "true", "yes"}
 
 
 settings = Settings()

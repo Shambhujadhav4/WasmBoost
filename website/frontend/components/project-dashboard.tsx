@@ -19,13 +19,15 @@ import {
   resetProject,
   scaleFeatures,
   trainModel,
+  trainModelWithTelemetry,
 } from "@/lib/api";
 import {
   CLASSIFICATION_MODELS,
   REGRESSION_MODELS,
 } from "@/lib/model-options";
 import { ACTIVE_PROJECT_STORAGE_KEY } from "@/lib/project-session";
-import type { ProjectSnapshot } from "@/lib/types";
+import type { ProjectSnapshot, TelemetryEvent } from "@/lib/types";
+
 
 import { DataPreviewTable } from "./data-preview-table";
 import { MetricsCards } from "./metrics-cards";
@@ -92,6 +94,11 @@ export function ProjectDashboard({
   const [randomState, setRandomState] = useState(42);
   const [runCv, setRunCv] = useState(true);
   const [trainingMessage, setTrainingMessage] = useState("Configure options and click Train Model.");
+  const [trainingProgress, setTrainingProgress] = useState(0);
+  const [trainingStage, setTrainingStage] = useState<string>("idle");
+  const [trainingLogs, setTrainingLogs] = useState<string[]>([]);
+  const [isTraining, setIsTraining] = useState(false);
+
 
   const [selectedChart, setSelectedChart] = useState<"histogram" | "boxplot" | "correlation" | "scatter" | "categorical" | "datatypes">("histogram");
   const [histogramColumn, setHistogramColumn] = useState("");
@@ -341,10 +348,16 @@ export function ProjectDashboard({
       return;
     }
 
-    setTrainingMessage("Model is training... Please wait.");
-    const succeeded = await runMutation(
-      () =>
-        trainModel({
+    setIsTraining(true);
+    setTrainingProgress(5);
+    setTrainingStage("queued");
+    setTrainingMessage("Submitting training job to background worker queue...");
+    setTrainingLogs([`[0%] Dispatched training request for ${selectedModel}...`]);
+    setError(null);
+
+    try {
+      const nextSnapshot = await trainModelWithTelemetry(
+        {
           projectId,
           taskType,
           modelName: selectedModel,
@@ -353,18 +366,37 @@ export function ProjectDashboard({
           testSize,
           randomState,
           runCv,
-        }),
-      "Model training completed. Redirecting to results...",
-    );
+        },
+        (event: TelemetryEvent) => {
+          setTrainingProgress(event.progress);
+          setTrainingStage(event.status);
+          setTrainingMessage(event.message);
+          setTrainingLogs((prev) => [
+            ...prev.slice(-8),
+            `[${event.progress}%] ${event.message}`,
+          ]);
+        },
+      );
 
-    if (succeeded) {
-      setTrainingMessage("Training completed. Redirecting to results...");
-      router.push(`/results?projectId=${projectId}`);
-      return;
+      const nextMeta = await fetchVisualizationMetadata(projectId);
+      setSnapshot(nextSnapshot);
+      setVizMeta(nextMeta);
+      setTrainingProgress(100);
+      setTrainingStage("completed");
+      setTrainingMessage("Model training and export completed successfully! Redirecting...");
+      setTimeout(() => {
+        router.push(`/results?projectId=${projectId}`);
+      }, 900);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Training failed unexpectedly.";
+      setError(message);
+      setTrainingStage("failed");
+      setTrainingMessage(`Training failed: ${message}`);
+    } finally {
+      setIsTraining(false);
     }
-
-    setTrainingMessage("Training failed. Please check settings and try again.");
   }
+
 
   function getSelectedValues(event: ChangeEvent<HTMLSelectElement>) {
     return Array.from(event.target.selectedOptions, (option) => option.value);
@@ -847,12 +879,39 @@ export function ProjectDashboard({
                 <button
                   type="button"
                   className="button button-primary training-submit"
-                  disabled={!projectId || !targetColumn || !featureColumns.length || isMutating}
+                  disabled={!projectId || !targetColumn || !featureColumns.length || isTraining || isMutating}
                   onClick={() => void trainAndNavigateToResults()}
                 >
-                  {isMutating ? "🚀 Training model..." : "🚀 Train Model"}
+                  {isTraining ? "🚀 Training model in background..." : "🚀 Train Model"}
                 </button>
-                <p className="training-status">{trainingMessage}</p>
+
+                {(isTraining || trainingProgress > 0) && (
+                  <div className="telemetry-card">
+                    <div className="telemetry-header">
+                      <strong>Live Training Telemetry</strong>
+                      <span className={`telemetry-stage-pill ${trainingStage}`}>
+                        {isTraining && <span className="pulse-dot" />}
+                        {trainingStage.replace(/_/g, " ")} ({trainingProgress}%)
+                      </span>
+                    </div>
+                    <div className="telemetry-progress-track">
+                      <div
+                        className="telemetry-progress-fill"
+                        style={{ width: `${Math.max(5, Math.min(100, trainingProgress))}%` }}
+                      />
+                    </div>
+                    <p className="telemetry-message">{trainingMessage}</p>
+                    {trainingLogs.length > 0 && (
+                      <div className="telemetry-log-box">
+                        {trainingLogs.map((log, i) => (
+                          <div key={i} className="telemetry-log-item">
+                            {log}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -861,7 +920,7 @@ export function ProjectDashboard({
                   <h2>Train a real model from the website</h2>
                 </div>
                 <div className="preprocess-grid">
-                  <PreprocessCard title="Training setup" buttonLabel="Train model" onSubmit={() => projectId && targetColumn && featureColumns.length ? trainAndNavigateToResults() : Promise.resolve()} disabled={!projectId || !targetColumn || !featureColumns.length || isMutating}>
+                  <PreprocessCard title="Training setup" buttonLabel={isTraining ? "Training..." : "Train model"} onSubmit={() => projectId && targetColumn && featureColumns.length ? trainAndNavigateToResults() : Promise.resolve()} disabled={!projectId || !targetColumn || !featureColumns.length || isTraining || isMutating}>
                     <div className="field-grid">
                       <label className="field">
                         <span>Task type</span>
@@ -906,6 +965,24 @@ export function ProjectDashboard({
                         <input type="checkbox" checked={runCv} onChange={(event) => setRunCv(event.target.checked)} />
                       </label>
                     </div>
+                    {(isTraining || trainingProgress > 0) && (
+                      <div className="telemetry-card">
+                        <div className="telemetry-header">
+                          <strong>Live Training Telemetry</strong>
+                          <span className={`telemetry-stage-pill ${trainingStage}`}>
+                            {isTraining && <span className="pulse-dot" />}
+                            {trainingStage.replace(/_/g, " ")} ({trainingProgress}%)
+                          </span>
+                        </div>
+                        <div className="telemetry-progress-track">
+                          <div
+                            className="telemetry-progress-fill"
+                            style={{ width: `${Math.max(5, Math.min(100, trainingProgress))}%` }}
+                          />
+                        </div>
+                        <p className="telemetry-message">{trainingMessage}</p>
+                      </div>
+                    )}
                     {projectId ? <Link href={`/results?projectId=${projectId}`} className="button button-secondary">Open results</Link> : null}
                   </PreprocessCard>
                 </div>

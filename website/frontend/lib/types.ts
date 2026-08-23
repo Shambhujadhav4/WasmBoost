@@ -65,3 +65,32 @@ export type WorkflowRecommendation = {
   suggested_preprocessing_steps: string[];
   notes: string[];
 };
+
+export type TrainTaskResponse = {
+  task_id: string;
+  project_id: string;
+  status: string;
+  message: string;
+};
+
+export type TrainStatusResponse = {
+  task_id: string;
+  state: string;
+  status?: string | null;
+  progress?: number | null;
+  message?: string | null;
+  result?: ProjectSnapshot | Record<string, unknown> | null;
+  error?: string | null;
+};
+
+export type TelemetryEvent = {
+  task_id: string;
+  project_id: string;
+  status: "queued" | "connected" | "preparing" | "training" | "cross_validating" | "evaluating" | "exporting" | "completed" | "failed" | string;
+  progress: number;
+  message: string;
+  timestamp?: string;
+  snapshot?: ProjectSnapshot | null;
+  error?: string | null;
+};
+
