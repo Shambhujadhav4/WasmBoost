@@ -570,7 +570,6 @@ export function ResultsOverview({
                     <PlotlyChart
                       figure={evaluationFigures?.confusion_matrix ?? null}
                       emptyMessage="Confusion matrix is not available for this model."
-                      fontColor="#d9e1ef"
                     />
                   </div>
                   <div>
@@ -578,7 +577,6 @@ export function ResultsOverview({
                     <PlotlyChart
                       figure={evaluationFigures?.roc_curve ?? null}
                       emptyMessage="ROC curve is only available for supported binary classifiers."
-                      fontColor="#d9e1ef"
                     />
                   </div>
                 </div>
@@ -591,7 +589,6 @@ export function ResultsOverview({
                     <PlotlyChart
                       figure={evaluationFigures?.actual_vs_predicted ?? null}
                       emptyMessage="Actual vs predicted plot is not available."
-                      fontColor="#d9e1ef"
                     />
                   </div>
                   <div>
@@ -599,7 +596,6 @@ export function ResultsOverview({
                     <PlotlyChart
                       figure={evaluationFigures?.residuals ?? null}
                       emptyMessage="Residual plot is not available."
-                      fontColor="#d9e1ef"
                     />
                   </div>
                 </div>
@@ -650,7 +646,6 @@ export function ResultsOverview({
                       <PlotlyChart
                         figure={optunaHistoryFig}
                         emptyMessage="Optimization history chart is not available."
-                        fontColor="#d9e1ef"
                       />
                     </div>
                     <div>
@@ -658,7 +653,6 @@ export function ResultsOverview({
                       <PlotlyChart
                         figure={optunaParamImpFig}
                         emptyMessage="Hyperparameter importances require multiple completed trials."
-                        fontColor="#d9e1ef"
                       />
                     </div>
                   </div>
@@ -724,7 +718,7 @@ export function ResultsOverview({
                         TreeSHAP decomposes complex non-linear machine learning models into additive feature attribution contributions based on cooperative game theory.
                       </p>
                       <ul className="feature-list">
-                        <li>Framework: <strong style={{ color: "#38bdf8" }}>{shapData.model_framework}</strong></li>
+                        <li>Framework: <strong>{shapData.model_framework}</strong></li>
                         <li>Base Value (Expected Output): <strong>{shapData.base_value ?? "0.0"}</strong></li>
                         <li>Evaluated Samples: {shapData.sample_explanations?.length ?? 0}</li>
                       </ul>
@@ -751,7 +745,6 @@ export function ResultsOverview({
                     <PlotlyChart
                       figure={shapSummaryFig}
                       emptyMessage="TreeSHAP summary figure is not available."
-                      fontColor="#d9e1ef"
                     />
                   </div>
 
@@ -781,7 +774,6 @@ export function ResultsOverview({
                     <PlotlyChart
                       figure={shapWaterfallFig}
                       emptyMessage="Local sample waterfall explanation is not available."
-                      fontColor="#d9e1ef"
                     />
                   </div>
 
@@ -812,7 +804,6 @@ export function ResultsOverview({
                       <PlotlyChart
                         figure={shapDependenceFig}
                         emptyMessage="SHAP dependence chart is not available."
-                        fontColor="#d9e1ef"
                       />
                     </div>
                   )}

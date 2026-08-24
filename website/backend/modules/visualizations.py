@@ -427,14 +427,14 @@ class DataVisualizer:
                         color=norm_vals,
                         colorscale="RdBu_r",
                         opacity=0.7,
-                        line=dict(width=0.5, color="white"),
+                        line=dict(width=0.5, color="rgba(0,0,0,0.15)"),
                     ),
                     text=[f"Feature val: {v:.3f}<br>SHAP: {s:.3f}" for v, s in zip(f_vals, sub["shap_value"])],
                     hoverinfo="text",
                 )
             )
 
-        fig.add_vline(x=0, line_dash="dash", line_color="rgba(255,255,255,0.4)")
+        fig.add_vline(x=0, line_dash="dash", line_color="rgba(0,0,0,0.25)")
         fig.update_layout(
             title="TreeSHAP Summary Distribution (Beeswarm)",
             xaxis_title="SHAP value (Impact on Model Output)",
@@ -472,7 +472,7 @@ class DataVisualizer:
                 textposition="outside",
             )
         )
-        fig.add_vline(x=0, line_dash="solid", line_color="rgba(255,255,255,0.4)")
+        fig.add_vline(x=0, line_dash="solid", line_color="rgba(0,0,0,0.25)")
         fig.update_layout(
             title=f"SHAP Local Feature Contributions (Sample #{sample_index + 1}) · Base: {base_value:.3f} → Prediction: {output_value:.3f}",
             xaxis_title="SHAP Feature Contribution (+ pushes prediction up, - pushes down)",
@@ -503,7 +503,7 @@ class DataVisualizer:
                 text=[f"Value: {x:.3f}, SHAP: {y:.3f}" for x, y in zip(x_vals, y_vals)],
             )
         )
-        fig.add_hline(y=0, line_dash="dash", line_color="rgba(255,255,255,0.4)")
+        fig.add_hline(y=0, line_dash="dash", line_color="rgba(0,0,0,0.25)")
         fig.update_layout(
             title=f"TreeSHAP Dependence: <b>{feature_name}</b>",
             xaxis_title=f"{feature_name} value",

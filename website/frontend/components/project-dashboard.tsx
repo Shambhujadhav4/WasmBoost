@@ -1538,7 +1538,6 @@ export function ProjectDashboard({
                 <PlotlyChart
                   figure={chartFigure}
                   emptyMessage="No chart is available for the current dataset and selection."
-                  fontColor="#d9e1ef"
                   showModeBar
                 />
               </>

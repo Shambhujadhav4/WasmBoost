@@ -279,8 +279,10 @@ export function UploadForm() {
                   </div>
 
                   <div className="recommendation-best-model">
-                    <p className="recommendation-label">Best model</p>
-                    <h3>{recommendation.best_model?.model_name ?? "Not available"}</h3>
+                    <div className="recommendation-best-model-title">
+                      <p className="recommendation-subtitle" style={{margin:0}}>Best model</p>
+                      <h3>{recommendation.best_model?.model_name ?? "Not available"}</h3>
+                    </div>
                     <p className="muted">
                       {recommendation.best_model
                         ? `Primary score ${recommendation.best_model.mean_score.toFixed(4)} +/- ${recommendation.best_model.std_score.toFixed(4)}`
