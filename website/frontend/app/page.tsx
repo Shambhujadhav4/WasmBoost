@@ -1,29 +1,35 @@
 import Link from "next/link";
 
 const highlights = [
-  "FastAPI backend that wraps your existing preprocessing and training modules",
-  "Next.js frontend with a clean, task-focused experience",
-  "A complete workflow from upload to exploration, preprocessing, training, and results",
+  "Zero-Knowledge Edge Preprocessing: Run Pandas and Scikit-Learn locally in your browser via Pyodide WebAssembly without uploading raw data.",
+  "Distributed Asynchronous Training: Offload heavy ML tasks to background Celery workers with live WebSocket progress streaming.",
+  "Bayesian Optimization & Explainability: Automated hyperparameter tuning with Optuna and game-theoretic interpretability via TreeSHAP.",
 ];
 
 const stats = [
-  { label: "Workflow Steps", value: "6" },
-  { label: "Core Pages", value: "5" },
-  { label: "Live API", value: "FastAPI" },
+  { label: "Latency", value: "0 ms", sub: "Client-side WASM" },
+  { label: "Core Algorithms", value: "3", sub: "XGBoost · LightGBM · CatBoost" },
+  { label: "Async Engine", value: "∞", sub: "Celery + Redis + WebSockets" },
 ];
 
-const flow = ["Upload", "Exploration", "Preprocessing", "Training", "Results"];
+const flow = [
+  { step: "Dataset Ingestion", detail: "Local WASM Memory" },
+  { step: "Exploratory Data Analysis", detail: "Feature Selection" },
+  { step: "Distributed Training", detail: "Optuna Tuning" },
+  { step: "Evaluation & Export", detail: "TreeSHAP + Artifacts" },
+];
 
 export default function HomePage() {
   return (
     <section className="stack home-page">
       <div className="home-hero panel">
         <div className="home-hero-content">
-          <p className="eyebrow">Data Workflow</p>
-          <h1>Build and evaluate machine learning pipelines with clarity.</h1>
+          <p className="eyebrow">Enterprise AutoML</p>
+          <h1>Build and evaluate machine learning pipelines with absolute privacy.</h1>
           <p className="lead">
-            DataPilot combines a polished frontend, reusable API routes, and a clear
-            ML workflow so your project looks like a production-ready product, not only a demo.
+            DataPilot combines browser-native WebAssembly preprocessing for complete data privacy
+            with distributed, asynchronous gradient boosting and TreeSHAP explainability, giving
+            you a production-grade ML engine at the edge.
           </p>
           <div className="button-row">
             <Link href="/upload" className="button button-primary">
@@ -39,6 +45,7 @@ export default function HomePage() {
             <div key={item.label} className="home-stat-card">
               <p>{item.label}</p>
               <strong>{item.value}</strong>
+              {"sub" in item && <span className="home-stat-sub">{item.sub}</span>}
             </div>
           ))}
         </div>
@@ -46,7 +53,7 @@ export default function HomePage() {
 
       <div className="home-grid">
         <div className="panel home-panel">
-          <p className="eyebrow">Why this version is stronger</p>
+          <p className="eyebrow">Platform Highlights</p>
           <ul className="feature-list">
             {highlights.map((highlight) => (
               <li key={highlight}>{highlight}</li>
@@ -55,12 +62,15 @@ export default function HomePage() {
         </div>
 
         <div className="panel home-panel">
-          <p className="eyebrow">Workflow at a glance</p>
+          <p className="eyebrow">Pipeline Architecture</p>
           <div className="flow-track">
-            {flow.map((step, index) => (
-              <div key={step} className="flow-chip">
+            {flow.map((item, index) => (
+              <div key={item.step} className="flow-chip">
                 <span>{index + 1}</span>
-                <strong>{step}</strong>
+                <div className="flow-chip-text">
+                  <strong>{item.step}</strong>
+                  <em>{item.detail}</em>
+                </div>
               </div>
             ))}
           </div>
@@ -68,10 +78,13 @@ export default function HomePage() {
       </div>
 
       <div className="panel home-panel">
-        <p className="eyebrow">Suggested next milestone</p>
-        <h2>Follow the step flow: upload, explore, preprocess, train, results.</h2>
+        <p className="eyebrow">Secure Production Serving</p>
+        <h2>From In-Browser Exploration to Cross-Platform Deployment</h2>
         <p className="muted">
-          The app is now organized into separate pages so each stage of the ML workflow has its own URL and layout.
+          Export trained pipelines directly to ONNX format for microsecond inference in Node.js,
+          C++, and Go, or download allow-list validated <code>.skops</code> binaries for secure
+          Python analysis. We ensure your models are immune to Arbitrary Code Execution (ACE)
+          out of the box.
         </p>
       </div>
     </section>
