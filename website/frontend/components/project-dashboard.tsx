@@ -136,6 +136,8 @@ export function ProjectDashboard({
   const [scatterColorColumn, setScatterColorColumn] = useState("");
   const [categoricalColumn, setCategoricalColumn] = useState("");
   const [chartFigure, setChartFigure] = useState<Record<string, unknown> | null>(null);
+  const [chartCache, setChartCache] = useState<Record<string, any>>({});
+  const [isChartLoading, setIsChartLoading] = useState<boolean>(false);
   const [chartStatus, setChartStatus] = useState("Choose a chart type to load a live visualization.");
   const [chartError, setChartError] = useState<string | null>(null);
 
@@ -297,45 +299,83 @@ export function ProjectDashboard({
       return;
     }
 
+    let cacheKey = `${selectedChart}-${histogramColumn}`;
+    if (selectedChart === "boxplot") {
+      cacheKey = `boxplot-${boxplotColumn}-grouped-${boxplotGroupBy}`;
+    } else if (selectedChart === "scatter") {
+      cacheKey = `scatter-${scatterXColumn}-${scatterYColumn}-${scatterColorColumn}`;
+    } else if (selectedChart === "categorical") {
+      cacheKey = `categorical-${categoricalColumn}`;
+    } else if (selectedChart === "correlation") {
+      cacheKey = `correlation-${projectId}`;
+    }
+
+    if (chartCache[cacheKey]) {
+      setChartFigure(chartCache[cacheKey]);
+      setChartError(null);
+      setChartStatus(`Loaded from React memory cache ⚡`);
+      setIsChartLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setChartError(null);
-    setChartStatus("Loading chart...");
+    setIsChartLoading(true);
+    setChartStatus("Computing visualization...");
 
-    const request =
-      selectedChart === "histogram" && histogramColumn
-        ? fetchDistributionFigure({ projectId, column: histogramColumn })
-        : selectedChart === "boxplot" && boxplotColumn
-          ? fetchBoxplotFigure({ projectId, column: boxplotColumn })
-          : selectedChart === "categorical" && categoricalColumn
-            ? fetchCountplotFigure({ projectId, column: categoricalColumn })
-        : selectedChart === "correlation"
-          ? fetchCorrelationFigure(projectId)
-          : scatterXColumn && scatterYColumn
-            ? fetchScatterFigure({
-                projectId,
-                xColumn: scatterXColumn,
-                yColumn: scatterYColumn,
-                colorColumn: scatterColorColumn || undefined,
-              })
-            : Promise.resolve(null);
+    async function loadFigure() {
+      try {
+        let figure: any = null;
+        try {
+          figure = await pyodideClient.generateChart(projectId!, selectedChart as any, {
+            column: selectedChart === "histogram" ? histogramColumn : selectedChart === "boxplot" ? boxplotColumn : categoricalColumn,
+            xColumn: scatterXColumn,
+            yColumn: scatterYColumn,
+            colorColumn: scatterColorColumn,
+            groupBy: boxplotGroupBy,
+          });
+        } catch {}
 
-    request
-      .then((figure) => {
-        if (cancelled) {
-          return;
+        if (!figure) {
+          if (selectedChart === "histogram" && histogramColumn) {
+            figure = await fetchDistributionFigure({ projectId: projectId!, column: histogramColumn });
+          } else if (selectedChart === "boxplot" && boxplotColumn) {
+            figure = await fetchBoxplotFigure({ projectId: projectId!, column: boxplotColumn });
+          } else if (selectedChart === "categorical" && categoricalColumn) {
+            figure = await fetchCountplotFigure({ projectId: projectId!, column: categoricalColumn });
+          } else if (selectedChart === "correlation") {
+            figure = await fetchCorrelationFigure(projectId!);
+          } else if (scatterXColumn && scatterYColumn) {
+            figure = await fetchScatterFigure({
+              projectId: projectId!,
+              xColumn: scatterXColumn,
+              yColumn: scatterYColumn,
+              colorColumn: scatterColorColumn || undefined,
+            });
+          }
         }
-        setChartFigure(figure);
-        setChartStatus("Live chart loaded from the FastAPI backend.");
-      })
-      .catch((requestError) => {
-        if (cancelled) {
-          return;
+
+        if (cancelled) return;
+        if (figure) {
+          setChartCache((prev) => ({ ...prev, [cacheKey]: figure }));
+          setChartFigure(figure);
+          setChartStatus("Live visualization ready.");
+        } else {
+          setChartFigure(null);
+          setChartStatus("No chart available for the current selection.");
         }
+      } catch (requestError) {
+        if (cancelled) return;
         const message = requestError instanceof Error ? requestError.message : "Unable to load the chart.";
         setChartFigure(null);
         setChartError(message);
         setChartStatus("The chart could not be loaded.");
-      });
+      } finally {
+        if (!cancelled) setIsChartLoading(false);
+      }
+    }
+
+    loadFigure();
 
     return () => {
       cancelled = true;
@@ -351,6 +391,7 @@ export function ProjectDashboard({
     scatterYColumn,
     scatterColorColumn,
     snapshot,
+    chartCache,
   ]);
 
   const metricItems = useMemo(
@@ -1537,6 +1578,8 @@ export function ProjectDashboard({
                 <div className={`status${chartError ? " error" : ""}`}>{chartStatus}</div>
                 <PlotlyChart
                   figure={chartFigure}
+                  isLoading={isChartLoading}
+                  loadingMessage={chartStatus}
                   emptyMessage="No chart is available for the current dataset and selection."
                   showModeBar
                 />

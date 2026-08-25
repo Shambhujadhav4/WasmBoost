@@ -298,6 +298,29 @@ class PyodideClient {
   public async exportPreprocessedDataset(projectId: string): Promise<PyodideExportResult> {
     return this.dispatch<PyodideExportResult>("EXPORT_DATASET", { projectId });
   }
+
+  public async generateChart(
+    projectId: string,
+    chartType: "histogram" | "boxplot" | "correlation" | "scatter" | "categorical" | "countplot",
+    options?: {
+      column?: string;
+      xColumn?: string;
+      yColumn?: string;
+      colorColumn?: string;
+      groupBy?: string;
+    }
+  ): Promise<Record<string, any> | null> {
+    return this.dispatch<Record<string, any> | null>("GENERATE_CHART", {
+      projectId,
+      chartType,
+      column: options?.column,
+      xColumn: options?.xColumn,
+      yColumn: options?.yColumn,
+      colorColumn: options?.colorColumn,
+      groupBy: options?.groupBy,
+    });
+  }
 }
 
 export const pyodideClient = new PyodideClient();
+

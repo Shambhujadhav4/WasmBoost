@@ -179,3 +179,10 @@ export type TelemetryEvent = {
   error?: string | null;
 };
 
+export type VizMetadata = {
+  project_id: string;
+  numeric_columns: string[];
+  categorical_columns: string[];
+};
+
+

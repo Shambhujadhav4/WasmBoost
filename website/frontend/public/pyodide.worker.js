@@ -436,6 +436,171 @@ def export_preprocessed_dataset(project_id):
         "records": records,
         "csv_text": csv_str,
     }
+
+def generate_histogram_figure(project_id, column):
+    s = get_session(project_id)
+    df = s["processed"]
+    if column not in df.columns:
+        return None
+    series = df[column].dropna()
+    if series.empty:
+        return None
+    vals = series.tolist()
+    return {
+        "data": [
+            {
+                "type": "histogram",
+                "x": vals,
+                "name": "Distribution",
+                "nbinsx": 30,
+                "opacity": 0.75,
+                "marker": {"color": "#0ea5e9"}
+            }
+        ],
+        "layout": {
+            "title": f"Distribution of <b>{column}</b>",
+            "xaxis": {"title": str(column)},
+            "yaxis": {"title": "Count"},
+            "autosize": True,
+            "height": 420
+        }
+    }
+
+def generate_boxplot_figure(project_id, column, group_by=None):
+    s = get_session(project_id)
+    df = s["processed"]
+    if column not in df.columns:
+        return None
+    if group_by and group_by in df.columns:
+        data = []
+        for cat in df[group_by].dropna().unique():
+            sub_vals = df[df[group_by] == cat][column].dropna().tolist()
+            data.append({
+                "type": "box",
+                "y": sub_vals,
+                "name": str(cat),
+                "boxmean": True
+            })
+        return {
+            "data": data,
+            "layout": {
+                "title": f"Box Plot of <b>{column}</b> by <b>{group_by}</b>",
+                "xaxis": {"title": str(group_by)},
+                "yaxis": {"title": str(column)},
+                "autosize": True,
+                "height": 420
+            }
+        }
+    vals = df[column].dropna().tolist()
+    return {
+        "data": [
+            {
+                "type": "box",
+                "y": vals,
+                "name": str(column),
+                "boxmean": True,
+                "marker": {"color": "#0ea5e9"}
+            }
+        ],
+        "layout": {
+            "title": f"Box Plot of <b>{column}</b>",
+            "yaxis": {"title": str(column)},
+            "autosize": True,
+            "height": 420
+        }
+    }
+
+def generate_correlation_figure(project_id):
+    s = get_session(project_id)
+    df = s["processed"]
+    num_df = df.select_dtypes(include=[np.number])
+    if num_df.shape[1] < 2:
+        return None
+    corr = num_df.corr().round(2)
+    cols = [str(c) for c in corr.columns]
+    z_vals = corr.values.tolist()
+    return {
+        "data": [
+            {
+                "type": "heatmap",
+                "z": z_vals,
+                "x": cols,
+                "y": cols,
+                "colorscale": "RdBu",
+                "zmid": 0,
+                "text": z_vals,
+                "texttemplate": "%{text}",
+                "textfont": {"size": 10}
+            }
+        ],
+        "layout": {
+            "title": "Correlation Heatmap",
+            "autosize": True,
+            "height": 500
+        }
+    }
+
+def generate_scatter_figure(project_id, x_col, y_col, color_col=None):
+    s = get_session(project_id)
+    df = s["processed"]
+    if x_col not in df.columns or y_col not in df.columns:
+        return None
+    plot_df = df.sample(n=2000, random_state=42) if len(df) > 2000 else df
+    if color_col and color_col in plot_df.columns:
+        data = []
+        for cat in plot_df[color_col].dropna().unique():
+            sub_df = plot_df[plot_df[color_col] == cat]
+            data.append({
+                "type": "scatter",
+                "mode": "markers",
+                "name": str(cat),
+                "x": sub_df[x_col].tolist(),
+                "y": sub_df[y_col].tolist(),
+                "opacity": 0.75
+            })
+    else:
+        data = [{
+            "type": "scatter",
+            "mode": "markers",
+            "name": f"{x_col} vs {y_col}",
+            "x": plot_df[x_col].tolist(),
+            "y": plot_df[y_col].tolist(),
+            "marker": {"color": "#0ea5e9", "opacity": 0.75}
+        }]
+    return {
+        "data": data,
+        "layout": {
+            "title": f"<b>{x_col}</b> vs <b>{y_col}</b>",
+            "xaxis": {"title": str(x_col)},
+            "yaxis": {"title": str(y_col)},
+            "autosize": True,
+            "height": 450
+        }
+    }
+
+def generate_countplot_figure(project_id, column):
+    s = get_session(project_id)
+    df = s["processed"]
+    if column not in df.columns:
+        return None
+    counts = df[column].value_counts().head(30)
+    return {
+        "data": [
+            {
+                "type": "bar",
+                "x": [str(x) for x in counts.index.tolist()],
+                "y": counts.values.tolist(),
+                "marker": {"color": "#0ea5e9"}
+            }
+        ],
+        "layout": {
+            "title": f"Value Counts: <b>{column}</b>",
+            "xaxis": {"title": str(column)},
+            "yaxis": {"title": "Count"},
+            "autosize": True,
+            "height": 420
+        }
+    }
 `);
 
     isReady = true;
@@ -574,6 +739,31 @@ json.dumps({
       const res = await pyodide.runPythonAsync(
         `json.dumps(apply_feature_selection(_temp_pid, method=_temp_method, target_col=_temp_target, n_features=_temp_n, feature_cols=_temp_features.to_py() if _temp_features else None, rfe_estimator=_temp_est, step=_temp_step))`
       );
+      result = JSON.parse(res);
+    } else if (action === "GENERATE_CHART") {
+      const { projectId, chartType, column, xColumn, yColumn, colorColumn, groupBy } = payload;
+      pyodide.globals.set("_temp_pid", projectId);
+      pyodide.globals.set("_temp_ctype", chartType);
+      pyodide.globals.set("_temp_col", column || "");
+      pyodide.globals.set("_temp_xcol", xColumn || "");
+      pyodide.globals.set("_temp_ycol", yColumn || "");
+      pyodide.globals.set("_temp_color", colorColumn || "");
+      pyodide.globals.set("_temp_groupby", groupBy || "");
+      const res = await pyodide.runPythonAsync(`
+if _temp_ctype == "histogram":
+    fig = generate_histogram_figure(_temp_pid, _temp_col)
+elif _temp_ctype == "boxplot":
+    fig = generate_boxplot_figure(_temp_pid, _temp_col, _temp_groupby if _temp_groupby else None)
+elif _temp_ctype == "correlation":
+    fig = generate_correlation_figure(_temp_pid)
+elif _temp_ctype == "scatter":
+    fig = generate_scatter_figure(_temp_pid, _temp_xcol, _temp_ycol, _temp_color if _temp_color else None)
+elif _temp_ctype in ("categorical", "countplot"):
+    fig = generate_countplot_figure(_temp_pid, _temp_col)
+else:
+    fig = None
+json.dumps(fig)
+`);
       result = JSON.parse(res);
     } else if (action === "EXPORT_DATASET") {
       const { projectId } = payload;

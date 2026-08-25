@@ -1,20 +1,78 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import React, { lazy, Suspense } from "react";
 
-const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
+// Dynamically import react-plotly.js via React.lazy for client-side bundle splitting
+const LazyPlot = lazy(() =>
+  import("react-plotly.js").then((mod) => ({
+    default: (mod as any).default || mod,
+  }))
+) as React.ComponentType<any>;
+
+export function ChartSkeleton({
+  message = "Rendering interactive visualization...",
+  height = 420,
+}: {
+  message?: string;
+  height?: number;
+}) {
+  return (
+    <div
+      className="chart-skeleton-container"
+      style={{ minHeight: height }}
+      aria-label="Loading chart visualization"
+      role="status"
+    >
+      <div className="chart-skeleton-shimmer" />
+      <div className="chart-skeleton-header">
+        <div className="chart-skeleton-bar chart-skeleton-title" />
+        <div className="chart-skeleton-bar chart-skeleton-subtitle" />
+      </div>
+      <div className="chart-skeleton-body">
+        <div className="chart-skeleton-axis-y">
+          <div className="chart-skeleton-tick" />
+          <div className="chart-skeleton-tick" />
+          <div className="chart-skeleton-tick" />
+          <div className="chart-skeleton-tick" />
+        </div>
+        <div className="chart-skeleton-graph">
+          <div className="chart-skeleton-col h-55" />
+          <div className="chart-skeleton-col h-80" />
+          <div className="chart-skeleton-col h-40" />
+          <div className="chart-skeleton-col h-95" />
+          <div className="chart-skeleton-col h-70" />
+          <div className="chart-skeleton-col h-60" />
+          <div className="chart-skeleton-col h-85" />
+          <div className="chart-skeleton-col h-45" />
+        </div>
+      </div>
+      <div className="chart-skeleton-footer">
+        <span className="chart-skeleton-spinner" />
+        <span className="chart-skeleton-text">{message}</span>
+      </div>
+    </div>
+  );
+}
 
 export function PlotlyChart({
   figure,
   emptyMessage,
   fontColor = "#0a0a0a",
   showModeBar = false,
+  isLoading = false,
+  loadingMessage = "Computing chart visualization...",
 }: {
   figure: Record<string, unknown> | null;
   emptyMessage: string;
   fontColor?: string;
   showModeBar?: boolean;
+  isLoading?: boolean;
+  loadingMessage?: string;
 }) {
+  if (isLoading) {
+    return <ChartSkeleton message={loadingMessage} />;
+  }
+
   if (!figure) {
     return <p className="muted">{emptyMessage}</p>;
   }
@@ -33,7 +91,6 @@ export function PlotlyChart({
     plot_bgcolor: "transparent",
     font: {
       family: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
-      color: fontColor,
       size: 12,
       ...(rawLayout.font ?? {}),
       color: fontColor,
@@ -56,7 +113,6 @@ export function PlotlyChart({
         ...rawLayout.title,
         font: {
           family: "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
-          color: fontColor,
           size: 13,
           ...(rawLayout.title.font ?? {}),
           color: fontColor,
@@ -76,7 +132,6 @@ export function PlotlyChart({
           ? {
               ...axis.title,
               font: {
-                color: fontColor,
                 size: 12,
                 ...(axis.title.font ?? {}),
                 color: fontColor,
@@ -91,7 +146,6 @@ export function PlotlyChart({
         linecolor: "rgba(0, 0, 0, 0.2)",
         tickfont: {
           family: "JetBrains Mono, ui-monospace, monospace",
-          color: "#3a3a3a",
           size: 11,
           ...(axis.tickfont ?? {}),
           color: "#3a3a3a",
@@ -109,14 +163,12 @@ export function PlotlyChart({
         ...rawLayout.coloraxis.colorbar,
         tickfont: {
           family: "JetBrains Mono, ui-monospace, monospace",
-          color: "#3a3a3a",
           size: 10,
           ...(rawLayout.coloraxis.colorbar.tickfont ?? {}),
           color: "#3a3a3a",
         },
         title: {
           font: {
-            color: fontColor,
             size: 11,
             ...(rawLayout.coloraxis.colorbar.title?.font ?? {}),
             color: fontColor,
@@ -135,7 +187,6 @@ export function PlotlyChart({
       ...rawLayout.legend,
       font: {
         family: "Inter, -apple-system, sans-serif",
-        color: fontColor,
         size: 11,
         ...(rawLayout.legend.font ?? {}),
         color: fontColor,
@@ -146,7 +197,7 @@ export function PlotlyChart({
   // Convert white/light lines in shapes to visible dark lines
   if (Array.isArray(rawLayout.shapes)) {
     processedLayout.shapes = rawLayout.shapes.map((s: any) => {
-      if (s?.line?.color && (typeof s.line.color === "string")) {
+      if (s?.line?.color && typeof s.line.color === "string") {
         const c = s.line.color.toLowerCase();
         if (c.includes("255,255,255") || c === "#fff" || c === "#ffffff" || c === "white") {
           return {
@@ -169,7 +220,6 @@ export function PlotlyChart({
         ...a,
         font: {
           family: "Inter, -apple-system, sans-serif",
-          color: fontColor,
           size: 11,
           ...(a?.font ?? {}),
           color: fontColor,
@@ -180,18 +230,21 @@ export function PlotlyChart({
 
   return (
     <div className="plot-shell">
-      <Plot
-        data={data}
-        layout={processedLayout}
-        config={{
-          responsive: true,
-          displayModeBar: showModeBar,
-          ...config,
-        }}
-        style={{ width: "100%", height: "100%" }}
-        useResizeHandler
-      />
+      <Suspense fallback={<ChartSkeleton message="Loading Plotly graphics engine..." />}>
+        <LazyPlot
+          data={data}
+          layout={processedLayout}
+          config={{
+            responsive: true,
+            displayModeBar: showModeBar,
+            ...config,
+          }}
+          style={{ width: "100%", height: "100%" }}
+          useResizeHandler
+        />
+      </Suspense>
     </div>
   );
 }
+
 
