@@ -5,6 +5,7 @@
 [![WebAssembly](https://img.shields.io/badge/Edge%20Compute-Pyodide%20WASM-654FF0?style=flat-square&logo=webassembly)](https://pyodide.org/)
 [![Celery](https://img.shields.io/badge/Async%20Queue-Celery%20%2B%20Redis-37814A?style=flat-square&logo=celery)](https://docs.celeryq.dev/)
 [![Docker](https://img.shields.io/badge/Deployment-Docker%20Compose-2496ED?style=flat-square&logo=docker)](https://www.docker.com/)
+[![Azure Ready](https://img.shields.io/badge/Cloud-Microsoft%20Azure%20Ready-0078D4?style=flat-square&logo=microsoftazure)](https://azure.microsoft.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
 **DataPilot** is a full-stack automated machine learning (AutoML) platform designed for data privacy, high performance, and seamless production deployment. It combines **zero-knowledge in-browser WebAssembly preprocessing** with a **distributed asynchronous backend training engine**, **Bayesian hyperparameter optimization**, **game-theoretic model explainability (TreeSHAP)**, and **secure model artifact serialization (ONNX & Skops)**.
@@ -14,24 +15,43 @@
 ## 🌟 Live Demo & Repositories
 
 - **Frontend (Vercel):** [https://ml-dashboard-livid-pi.vercel.app](https://ml-dashboard-livid-pi.vercel.app)
-- **Backend (Render):** [https://ml-dashboard-vqs0.onrender.com](https://ml-dashboard-vqs0.onrender.com)
+- **Backend (Render):** [https://ml-dashboard-vqs0.onrender.com](https://ml-dashboard-vqs0.onrender.com) *(Currently hosted on Render; soon deploying on Microsoft Azure)*
 - **Source Code (GitHub):** [https://github.com/Shambhujadhav4/ML_Dashboard](https://github.com/Shambhujadhav4/ML_Dashboard)
 
 ---
 
-## ✨ Key Features & Architecture
+## 🏗️ Platform Architecture
 
 ```mermaid
-graph LR
-    A[Raw CSV Dataset] -->|In-Browser WASM| B[Pyodide Edge Preprocessing]
-    B -->|Sanitized Feature Vectors| C[FastAPI API Gateway]
-    C -->|Dispatch Async Job| D[Redis Broker]
-    D -->|Consume Task| E[Celery Distributed Worker]
-    E -->|Optuna Tuning & TreeSHAP| F[Trained Models]
-    F -->|Secure Serialization| G[.onnx & .skops Artifacts]
-    E -->|Live Telemetry Callback| H[WebSockets / SSE]
-    H -->|Real-Time Progress| I[Next.js Dashboard]
+graph TD
+    subgraph Client ["🌐 Client Layer (In-Browser Edge Compute)"]
+        A["📄 Raw CSV/TSV Dataset"] --> B["⚡ Pyodide WASM Engine<br/>(Client-Side Pandas & Scikit-Learn)"]
+        B --> C["🔒 Sanitized Features & Summary"]
+        Dashboard["📊 Next.js 15 Dashboard<br/>(Plotly Visualizations)"]
+    end
+
+    subgraph Gateway ["🚪 Gateway & Ingestion"]
+        C --> API["⚡ FastAPI API Gateway<br/>(Nginx Reverse Proxy)"]
+    end
+
+    subgraph AsyncEngine ["⚙️ Distributed Async Engine"]
+        API -->|Dispatch Training Task| Redis[("📦 Redis Message Broker")]
+        Redis --> Worker["👷 Celery Distributed Worker"]
+    end
+
+    subgraph MLCore ["🧠 Machine Learning & Explainability"]
+        Worker --> Optuna["🎯 Optuna Bayesian Tuning"]
+        Optuna --> Models["🌲 Gradient Boosting / Tree Models"]
+        Models --> SHAP["🔍 TreeSHAP Feature Interpretability"]
+        Models --> Artifacts["📦 Secure Artifacts (.onnx & .skops)"]
+    end
+
+    Worker -.->|Live Telemetry Stream<br/>WebSockets / SSE| Dashboard
 ```
+
+---
+
+## ✨ Key Features
 
 ### 1. ⚡ Zero-Knowledge Edge Preprocessing (WebAssembly / Pyodide)
 - Executes Pandas, NumPy, and Scikit-Learn pipelines **locally inside a browser Web Worker** via Pyodide (WASM).
@@ -73,10 +93,10 @@ graph LR
 |---|---|
 | **Frontend** | Next.js 15 (App Router), React 19, TypeScript, Vanilla CSS (Dark Glassmorphic Theme), Plotly.js |
 | **Edge Runtime** | Pyodide (WebAssembly), Dedicated Web Workers |
-| **Backend API** | FastAPI (Python 3.13), Uvicorn, Gunicorn, Pydantic v2, WebSockets |
+| **Backend API** | FastAPI (Python 3.13), Uvicorn, Gunicorn, Pydantic v2, WebSockets *(Currently on Render; soon deploying on Microsoft Azure)* |
 | **ML Engine** | Scikit-Learn, Pandas, NumPy, XGBoost, LightGBM, CatBoost, Optuna, SHAP, Skops, ONNX |
 | **Task Queue** | Celery 5, Redis 7 |
-| **DevOps & Proxy** | Docker, Docker Compose, Nginx (Reverse Proxy & WebSocket Upgrades) |
+| **DevOps & Cloud** | Docker, Docker Compose, Nginx (Reverse Proxy & WebSockets), Microsoft Azure, Vercel, Render |
 
 ---
 
@@ -196,16 +216,19 @@ npm run dev
 
 ---
 
-## 🌐 Production VPS Deployment Guide
+## 🌐 Production Cloud & VPS Deployment Guide
 
-Deploy DataPilot to any Linux Virtual Private Server (e.g. DigitalOcean Droplet, AWS EC2, Hetzner, Linode, Vultr, Ubuntu 22.04/24.04 LTS).
+DataPilot can be deployed to **Microsoft Azure** (Azure VM, Azure Container Apps, or Azure App Service) or any standard Linux VPS (DigitalOcean Droplet, AWS EC2, Hetzner, Linode, Ubuntu 22.04/24.04 LTS).
 
-### 1. VPS Prerequisites
-- **OS:** Ubuntu 22.04 / 24.04 LTS (or any modern Linux distribution)
-- **Hardware:** Minimum 2GB RAM (4GB+ recommended for heavy gradient boosting / Optuna runs), 2 vCPUs, 20GB+ SSD.
+> [!NOTE]
+> The backend is currently hosted on Render (`https://ml-dashboard-vqs0.onrender.com`) and is planned for migration to **Microsoft Azure** for enterprise cloud hosting with high-performance compute.
 
-### 2. Install Docker & Docker Compose on your VPS
-SSH into your server and run:
+### 1. Server & VM Prerequisites
+- **OS:** Ubuntu 22.04 / 24.04 LTS (Azure Linux VM / Ubuntu VM)
+- **Hardware:** Minimum 2GB RAM (4GB+ recommended for heavy gradient boosting / Optuna runs), 2 vCPUs, 20GB+ SSD (e.g. Azure `Standard_B2s` or `Standard_D2s_v5`).
+
+### 2. Install Docker & Docker Compose
+SSH into your Azure VM or server and run:
 ```bash
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y curl git ufw
@@ -245,7 +268,10 @@ sudo docker compose up -d --build
 sudo docker compose ps
 ```
 
-### 5. Configure Firewall (UFW)
+### 5. Configure Firewall & Network Security Groups (NSG)
+In Microsoft Azure portal (or on your VPS):
+1. In Azure portal -> **Network Security Group (NSG)** -> Add Inbound Security Rules for ports `80` (HTTP), `443` (HTTPS), and `22` (SSH).
+2. On the server firewall:
 ```bash
 sudo ufw allow 22/tcp    # SSH
 sudo ufw allow 80/tcp    # HTTP
@@ -254,7 +280,7 @@ sudo ufw enable
 ```
 
 ### 6. Enable Free HTTPS / SSL with Let's Encrypt (Certbot)
-To secure your domain with SSL:
+To secure your custom domain with SSL:
 ```bash
 # Install Certbot
 sudo apt install -y certbot
