@@ -1,10 +1,29 @@
 services:
+  nginx:
+    image: nginx:alpine
+    container_name: datapilot-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # Uncomment for SSL
+      # - "443:443"
+    volumes:
+      - ./website/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # Uncomment for SSL certificates (e.g. Certbot)
+      # - ./certbot/conf:/etc/letsencrypt:ro
+      # - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - frontend
+      - backend
+
   redis:
     image: redis:7-alpine
     container_name: datapilot-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
-    restart: unless-stopped
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -16,53 +35,55 @@ services:
       context: ./website/backend
       dockerfile: Dockerfile
     container_name: datapilot-backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DATAPILOT_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      - DATAPILOT_CORS_ORIGINS=${DATAPILOT_CORS_ORIGINS:-http://localhost,http://localhost:3000,http://127.0.0.1:3000}
+      - DATAPILOT_CORS_ORIGIN_REGEX=${DATAPILOT_CORS_ORIGIN_REGEX:-https://.*\.vercel\.app}
     volumes:
-      - ./website/backend/uploads:/app/uploads
-      - ./website/backend/models:/app/models
+      - uploads_data:/app/uploads
+      - models_data:/app/models
     depends_on:
       redis:
         condition: service_healthy
-    restart: unless-stopped
 
   celery_worker:
     build:
       context: ./website/backend
       dockerfile: Dockerfile
     container_name: datapilot-celery-worker
+    restart: unless-stopped
     command: celery -A app.core.celery_app.celery_app worker --loglevel=info -c 2 --pool=threads
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
     volumes:
-      - ./website/backend/uploads:/app/uploads
-      - ./website/backend/models:/app/models
+      - uploads_data:/app/uploads
+      - models_data:/app/models
     depends_on:
       redis:
         condition: service_healthy
-    restart: unless-stopped
 
   frontend:
     build:
       context: ./website/frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
+        - NEXT_PUBLIC_WS_BASE_URL=${NEXT_PUBLIC_WS_BASE_URL:-}
     container_name: datapilot-frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
-      - NEXT_PUBLIC_WS_BASE_URL=ws://localhost:8000/api
     depends_on:
       - backend
-    restart: unless-stopped
 
 volumes:
+  redis_data:
   uploads_data:
   models_data:

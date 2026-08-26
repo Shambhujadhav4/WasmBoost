@@ -15,9 +15,8 @@ import {
   fetchVisualizationMetadata,
 } from "@/lib/api";
 import { pyodideClient } from "@/lib/pyodide-client";
+import { ACTIVE_PROJECT_STORAGE_KEY } from "@/lib/project-session";
 import type { ProjectSnapshot, VizMetadata } from "@/lib/types";
-
-const ACTIVE_PROJECT_STORAGE_KEY = "datapilot_active_project_id";
 
 export type ExplorationChartType =
   | "histogram"
