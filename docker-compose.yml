@@ -1,7 +1,7 @@
 services:
   nginx:
     image: nginx:alpine
-    container_name: datapilot-nginx
+    container_name: wasmboost-nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -18,7 +18,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: datapilot-redis
+    container_name: wasmboost-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -34,7 +34,7 @@ services:
     build:
       context: ./website/backend
       dockerfile: Dockerfile
-    container_name: datapilot-backend
+    container_name: wasmboost-backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -42,8 +42,8 @@ services:
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
-      - DATAPILOT_CORS_ORIGINS=${DATAPILOT_CORS_ORIGINS:-http://localhost,http://localhost:3000,http://127.0.0.1:3000}
-      - DATAPILOT_CORS_ORIGIN_REGEX=${DATAPILOT_CORS_ORIGIN_REGEX:-https://.*\.vercel\.app}
+      - WASMBOOST_CORS_ORIGINS=${WASMBOOST_CORS_ORIGINS:-${DATAPILOT_CORS_ORIGINS:-http://localhost,http://localhost:3000,http://127.0.0.1:3000}}
+      - WASMBOOST_CORS_ORIGIN_REGEX=${WASMBOOST_CORS_ORIGIN_REGEX:-${DATAPILOT_CORS_ORIGIN_REGEX:-https://.*\.vercel\.app}}
     volumes:
       - uploads_data:/app/uploads
       - models_data:/app/models
@@ -55,7 +55,7 @@ services:
     build:
       context: ./website/backend
       dockerfile: Dockerfile
-    container_name: datapilot-celery-worker
+    container_name: wasmboost-celery-worker
     restart: unless-stopped
     command: celery -A app.core.celery_app.celery_app worker --loglevel=info -c 2 --pool=threads
     environment:
@@ -76,7 +76,7 @@ services:
       args:
         - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-/api}
         - NEXT_PUBLIC_WS_BASE_URL=${NEXT_PUBLIC_WS_BASE_URL:-}
-    container_name: datapilot-frontend
+    container_name: wasmboost-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"

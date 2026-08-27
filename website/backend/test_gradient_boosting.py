@@ -1,5 +1,5 @@
 """
-Test suite validating XGBoost, LightGBM, and CatBoost integration in DataPilot:
+Test suite validating XGBoost, LightGBM, and CatBoost integration in WasmBoost:
 - Model Recommendation Service & Heuristic Advice (LightGBM on large datasets, CatBoost on categorical, XGBoost on tabular)
 - Model Training for Classification & Regression (XGBoost, LightGBM, CatBoost)
 - Metric calculation, Cross-Validation, and Feature Importance extraction

@@ -24,10 +24,10 @@ export default function HomePage() {
     <section className="stack home-page">
       <div className="home-hero panel">
         <div className="home-hero-content">
-          <p className="eyebrow">Enterprise AutoML</p>
+          <p className="eyebrow">Distributed AutoML Platform</p>
           <h1>Build and evaluate machine learning pipelines with absolute privacy.</h1>
           <p className="lead">
-            DataPilot combines browser-native WebAssembly preprocessing for complete data privacy
+            WasmBoost combines browser-native WebAssembly preprocessing for complete data privacy
             with distributed, asynchronous gradient boosting and TreeSHAP explainability, giving
             you a production-grade ML engine at the edge.
           </p>

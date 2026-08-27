@@ -5,8 +5,8 @@ import { TopNav } from "@/components/top-nav";
 import { PyodideProvider, PyodideStatusPill } from "@/lib/pyodide-context";
 
 export const metadata: Metadata = {
-  title: "DataPilot | ML Analytics & Experimentation Engine",
-  description: "Modern full-stack ML workspace featuring client-side WebAssembly EDA, Bayesian optimization, and TreeSHAP explainability.",
+  title: "WasmBoost | Distributed AutoML Platform",
+  description: "Distributed AutoML platform featuring browser-native WebAssembly preprocessing, Bayesian hyperparameter optimization, and TreeSHAP explainability.",
 };
 
 const navItems = [
@@ -28,10 +28,10 @@ export default function RootLayout({
           <div className="shell">
             <header className="topbar">
               <Link href="/" className="brand">
-                <span className="brand-mark">DP</span>
+                <span className="brand-mark">WB</span>
                 <span className="brand-text">
-                  <strong>DataPilot</strong>
-                  <small>ML Workspace</small>
+                  <strong>WasmBoost</strong>
+                  <small>Distributed AutoML</small>
                 </span>
               </Link>
               <TopNav items={navItems} />

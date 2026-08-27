@@ -22,18 +22,22 @@ def _split_origins(value: str) -> list[str]:
 
 @dataclass(slots=True)
 class Settings:
-    app_name: str = "DataPilot API"
+    app_name: str = "WasmBoost API"
     api_prefix: str = "/api"
     cors_origins: list[str] = field(
         default_factory=lambda: _split_origins(
             os.getenv(
-                "DATAPILOT_CORS_ORIGINS",
-                "http://localhost:3000,http://127.0.0.1:3000",
+                "WASMBOOST_CORS_ORIGINS",
+                os.getenv(
+                    "DATAPILOT_CORS_ORIGINS",
+                    "http://localhost:3000,http://127.0.0.1:3000",
+                ),
             )
         )
     )
     cors_origin_regex: str = os.getenv(
-        "DATAPILOT_CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app"
+        "WASMBOOST_CORS_ORIGIN_REGEX",
+        os.getenv("DATAPILOT_CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app"),
     )
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     celery_broker_url: str = os.getenv(

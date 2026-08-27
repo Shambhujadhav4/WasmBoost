@@ -1,7 +1,7 @@
-# DataPilot (ML Dashboard) - Project Portfolio Summary
+# WasmBoost (Distributed AutoML Platform) - Project Portfolio Summary
 
 ## Project Overview
-**DataPilot** is an enterprise-grade, full-stack automated machine learning (AutoML) platform that combines **zero-knowledge in-browser WebAssembly preprocessing** with a **distributed asynchronous backend training engine**, **Bayesian hyperparameter optimization (Optuna)**, **game-theoretic explainability (TreeSHAP)**, and **secure artifact serialization (ONNX & Skops)**. The application handles end-to-end data science workflows with an emphasis on data privacy, user experience, automated decision-making, and production readiness.
+**WasmBoost** is an enterprise-grade, full-stack distributed automated machine learning (AutoML) platform that combines **zero-knowledge in-browser WebAssembly preprocessing** with a **distributed asynchronous backend training engine**, **Bayesian hyperparameter optimization (Optuna)**, **game-theoretic explainability (TreeSHAP)**, and **secure artifact serialization (ONNX & Skops)**. The application handles end-to-end data science workflows with an emphasis on data privacy, user experience, automated decision-making, and production readiness.
 
 **Live Deployment:**
 - **Frontend (Vercel):** [https://ml-dashboard-livid-pi.vercel.app](https://ml-dashboard-livid-pi.vercel.app)
@@ -124,10 +124,10 @@
 ## How to Present on Resume
 
 ### Short Version (1-2 lines)
-"Built DataPilot, a full-stack AutoML platform (FastAPI + Next.js 15) featuring zero-knowledge WebAssembly edge preprocessing, asynchronous Celery/Redis training with live WebSocket telemetry, Optuna Bayesian tuning, and secure ONNX/Skops artifact serialization. Deployed on Vercel, Render, and prepared for Microsoft Azure."
+"Built WasmBoost, a full-stack distributed AutoML platform (FastAPI + Next.js 15) featuring zero-knowledge WebAssembly edge preprocessing, asynchronous Celery/Redis training with live WebSocket telemetry, Optuna Bayesian tuning, and secure ONNX/Skops artifact serialization. Deployed on Vercel, Render, and prepared for Microsoft Azure."
 
 ### Medium Version (3-4 bullets)
-- Architected full-stack AutoML web application (FastAPI + Next.js 15) enabling browser-native zero-knowledge data preprocessing via Pyodide WebAssembly (WASM) and multi-algorithm model benchmarking.
+- Architected WasmBoost, a full-stack distributed AutoML web application (FastAPI + Next.js 15) enabling browser-native zero-knowledge data preprocessing via Pyodide WebAssembly (WASM) and multi-algorithm model benchmarking.
 - Built distributed asynchronous training pipeline using Celery and Redis, streaming real-time training telemetry and Optuna Bayesian optimization metrics to frontend over WebSockets.
 - Implemented game-theoretic feature interpretability with TreeSHAP and secured model distribution against Arbitrary Code Execution (ACE) via `.skops` AST allowlist validation and cross-platform `.onnx` export.
 - Configured production Docker Compose orchestration and Nginx reverse proxy with SSL, managing deployments across Vercel, Render, and Microsoft Azure.

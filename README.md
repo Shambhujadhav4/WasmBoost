@@ -1,4 +1,4 @@
-# 🚀 DataPilot — Enterprise AutoML & Edge Preprocessing Platform
+# 🚀 WasmBoost (Distributed AutoML Platform)
 
 [![Next.js](https://img.shields.io/badge/Frontend-Next.js%2015%20(React%2019)-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20(Python%203.13)-009688?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -8,7 +8,7 @@
 [![Azure Ready](https://img.shields.io/badge/Cloud-Microsoft%20Azure%20Ready-0078D4?style=flat-square&logo=microsoftazure)](https://azure.microsoft.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
-**DataPilot** is a full-stack automated machine learning (AutoML) platform designed for data privacy, high performance, and seamless production deployment. It combines **zero-knowledge in-browser WebAssembly preprocessing** with a **distributed asynchronous backend training engine**, **Bayesian hyperparameter optimization**, **game-theoretic model explainability (TreeSHAP)**, and **secure model artifact serialization (ONNX & Skops)**.
+**WasmBoost** is an enterprise-grade, full-stack distributed automated machine learning (AutoML) platform designed for data privacy, high performance, and seamless production deployment. It combines **zero-knowledge in-browser WebAssembly preprocessing** with a **distributed asynchronous backend training engine**, **Bayesian hyperparameter optimization**, **game-theoretic model explainability (TreeSHAP)**, and **secure model artifact serialization (ONNX & Skops)**.
 
 ---
 
@@ -103,7 +103,7 @@ graph TD
 ## 📂 Project Directory Structure
 
 ```text
-DataPilot/
+WasmBoost/
 ├── docker-compose.yml           # Unified production multi-container orchestration
 ├── .env.example                 # Environment variables template
 ├── .gitignore                   # Git ignore rules for data, secrets & caches
@@ -177,7 +177,7 @@ docker compose up --build
 #### 1. Start Redis (Required for Celery)
 ```bash
 # Using Docker for Redis:
-docker run -d -p 6379:6379 --name datapilot-redis redis:7-alpine
+docker run -d -p 6379:6379 --name wasmboost-redis redis:7-alpine
 ```
 
 #### 2. Start the Backend & Celery Worker
@@ -218,7 +218,7 @@ npm run dev
 
 ## 🌐 Production Cloud & VPS Deployment Guide
 
-DataPilot can be deployed to **Microsoft Azure** (Azure VM, Azure Container Apps, or Azure App Service) or any standard Linux VPS (DigitalOcean Droplet, AWS EC2, Hetzner, Linode, Ubuntu 22.04/24.04 LTS).
+WasmBoost can be deployed to **Microsoft Azure** (Azure VM, Azure Container Apps, or Azure App Service) or any standard Linux VPS (DigitalOcean Droplet, AWS EC2, Hetzner, Linode, Ubuntu 22.04/24.04 LTS).
 
 > [!NOTE]
 > The backend is currently hosted on Render (`https://ml-dashboard-vqs0.onrender.com`) and is planned for migration to **Microsoft Azure** for enterprise cloud hosting with high-performance compute.
@@ -254,7 +254,7 @@ cp .env.example .env
 Edit `.env` using `nano .env`:
 ```env
 DOMAIN_NAME=yourdomain.com
-DATAPILOT_CORS_ORIGINS=http://yourdomain.com,https://yourdomain.com,http://localhost
+WASMBOOST_CORS_ORIGINS=http://yourdomain.com,https://yourdomain.com,http://localhost
 NEXT_PUBLIC_API_BASE_URL=/api
 NEXT_PUBLIC_WS_BASE_URL=
 ```

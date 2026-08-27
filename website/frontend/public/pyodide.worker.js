@@ -1,5 +1,5 @@
 /**
- * DataPilot Pyodide Web Worker (Phase 5)
+ * WasmBoost Pyodide Web Worker (Phase 5)
  * Runs Python 3 in WebAssembly with NumPy, Pandas, and Scikit-Learn.
  * Executes in-browser Exploratory Data Analysis (EDA) and Preprocessing on a background thread.
  */

@@ -1,1 +1,1 @@
-"""FastAPI application package for the DataPilot web backend."""
+"""FastAPI application package for the WasmBoost web backend."""

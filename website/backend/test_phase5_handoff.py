@@ -1,5 +1,5 @@
 """
-Phase 5 End-to-End Test Suite for DataPilot:
+Phase 5 End-to-End Test Suite for WasmBoost:
 - Client-Side WebAssembly (Pyodide) In-Browser Preprocessing Simulation
 - Backend Training Handoff Engine
 - On-the-Fly Session Ingestion

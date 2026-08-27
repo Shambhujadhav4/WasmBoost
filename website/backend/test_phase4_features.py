@@ -1,5 +1,5 @@
 """
-Phase 4 End-to-End Test Suite for DataPilot:
+Phase 4 End-to-End Test Suite for WasmBoost:
 - Mutual Information ranking
 - Recursive Feature Elimination (RFE)
 - Optuna Bayesian Hyperparameter Optimization
