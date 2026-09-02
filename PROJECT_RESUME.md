@@ -4,7 +4,7 @@
 **WasmBoost** is an enterprise-grade, full-stack distributed automated machine learning (AutoML) platform that combines **zero-knowledge in-browser WebAssembly preprocessing** with a **distributed asynchronous backend training engine**, **Bayesian hyperparameter optimization (Optuna)**, **game-theoretic explainability (TreeSHAP)**, and **secure artifact serialization (ONNX & Skops)**. The application handles end-to-end data science workflows with an emphasis on data privacy, user experience, automated decision-making, and production readiness.
 
 **Live Deployment:**
-- **Frontend (Vercel):** [https://ml-dashboard-livid-pi.vercel.app](https://ml-dashboard-livid-pi.vercel.app)
+- **Frontend (Vercel):** [https://wasm-boost.vercel.app](https://wasm-boost.vercel.app)
 - **Backend (Azure VM):** [https://wasmboost-api.uaenorth.cloudapp.azure.com](https://wasmboost-api.uaenorth.cloudapp.azure.com)
 - **GitHub Repository:** [https://github.com/Shambhujadhav4/WasmBoost](https://github.com/Shambhujadhav4/WasmBoost)
 
