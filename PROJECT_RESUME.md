@@ -5,8 +5,8 @@
 
 **Live Deployment:**
 - **Frontend (Vercel):** [https://ml-dashboard-livid-pi.vercel.app](https://ml-dashboard-livid-pi.vercel.app)
-- **Backend (Render):** [https://ml-dashboard-vqs0.onrender.com](https://ml-dashboard-vqs0.onrender.com) *(Currently hosted on Render; soon deploying on Microsoft Azure)*
-- **GitHub Repository:** [https://github.com/Shambhujadhav4/ML_Dashboard](https://github.com/Shambhujadhav4/ML_Dashboard)
+- **Backend (Azure VM):** [https://wasmboost-api.uaenorth.cloudapp.azure.com](https://wasmboost-api.uaenorth.cloudapp.azure.com)
+- **GitHub Repository:** [https://github.com/Shambhujadhav4/WasmBoost](https://github.com/Shambhujadhav4/WasmBoost)
 
 ---
 
