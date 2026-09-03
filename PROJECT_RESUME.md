@@ -29,7 +29,7 @@
 - **Model Serialization**: Skops (AST allowlist-validated Python models) & ONNX / `skl2onnx` (cross-platform inference)
 - **Asynchronous Task Queue**: Celery 5 with Redis 7 broker & result backend
 - **WebSocket Gateway**: FastAPI native WebSockets with pub/sub progress streaming
-- **Cloud & Deployment**: Currently on Render; migrating to **Microsoft Azure** (Azure Linux VM / Azure Container Apps)
+- **Cloud & Deployment**: **Microsoft Azure** (Ubuntu Linux VM `Standard_B2als_v2` with Nginx SSL & WebSockets)
 
 ### DevOps & Infrastructure
 - **Containerization**: Multi-stage Dockerfiles for backend and frontend
@@ -98,10 +98,10 @@
 **Solution**: Designed a dual-metric benchmarking system displaying both Weighted F1 and Accuracy (or R² and RMSE), complemented by Stratified K-Fold cross-validation.  
 **Impact**: Transparent trade-off visibility for users across classification and regression tasks.
 
-### 5. Multi-Environment CORS & Cloud Deployment (Vercel, Render, Azure)
+### 5. Multi-Environment CORS & Cloud Deployment (Vercel & Microsoft Azure)
 **Problem**: Dynamic preview domains on Vercel caused cross-origin resource sharing (CORS) 403 errors when connecting to the backend.  
 **Solution**: Implemented regex-based CORS origin matching (`allow_origin_regex=r"https://.*\.vercel\.app"`) with safe origin parsing and Nginx reverse proxy routing.  
-**Impact**: Flawless cross-cloud communication across Vercel frontend, Render backend, and future Microsoft Azure infrastructure.
+**Impact**: Flawless cross-cloud communication between Vercel frontend and Microsoft Azure VM backend.
 
 ---
 
@@ -117,25 +117,25 @@
 
 ### DevOps, Cloud & Distributed Systems
 - Celery 5, Redis 7, Distributed Task Queues, Pub/Sub Telemetry
-- Docker, Docker Compose, Nginx Reverse Proxy, Vercel, Render, Microsoft Azure (Azure VM / NSG)
+- Docker, Docker Compose, Nginx Reverse Proxy, Vercel, Microsoft Azure (Azure VM / NSG)
 
 ---
 
 ## How to Present on Resume
 
 ### Short Version (1-2 lines)
-"Built WasmBoost, a full-stack distributed AutoML platform (FastAPI + Next.js 15) featuring zero-knowledge WebAssembly edge preprocessing, asynchronous Celery/Redis training with live WebSocket telemetry, Optuna Bayesian tuning, and secure ONNX/Skops artifact serialization. Deployed on Vercel, Render, and prepared for Microsoft Azure."
+"Built WasmBoost, a full-stack distributed AutoML platform (FastAPI + Next.js 15) featuring zero-knowledge WebAssembly edge preprocessing, asynchronous Celery/Redis training with live WebSocket telemetry, Optuna Bayesian tuning, and secure ONNX/Skops artifact serialization. Deployed on Vercel (Edge CDN) and Microsoft Azure VM."
 
 ### Medium Version (3-4 bullets)
 - Architected WasmBoost, a full-stack distributed AutoML web application (FastAPI + Next.js 15) enabling browser-native zero-knowledge data preprocessing via Pyodide WebAssembly (WASM) and multi-algorithm model benchmarking.
 - Built distributed asynchronous training pipeline using Celery and Redis, streaming real-time training telemetry and Optuna Bayesian optimization metrics to frontend over WebSockets.
 - Implemented game-theoretic feature interpretability with TreeSHAP and secured model distribution against Arbitrary Code Execution (ACE) via `.skops` AST allowlist validation and cross-platform `.onnx` export.
-- Configured production Docker Compose orchestration and Nginx reverse proxy with SSL, managing deployments across Vercel, Render, and Microsoft Azure.
+- Configured production Docker Compose orchestration and Nginx reverse proxy with SSL, managing hybrid deployment on Vercel (Frontend) and Microsoft Azure VM (Backend).
 
 ---
 
 ## Live Demo Instructions
-1. Visit: [https://ml-dashboard-livid-pi.vercel.app](https://ml-dashboard-livid-pi.vercel.app)
+1. Visit: [https://wasm-boost.vercel.app](https://wasm-boost.vercel.app)
 2. Upload a CSV dataset (or test with standard tabular datasets).
 3. Experience client-side Pyodide WASM data profiling and preprocessing.
 4. Review automated dual-metric recommendations (F1-score + Accuracy).
@@ -145,4 +145,4 @@
 ---
 
 ## GitHub Repository
-[https://github.com/Shambhujadhav4/ML_Dashboard](https://github.com/Shambhujadhav4/ML_Dashboard)
+[https://github.com/Shambhujadhav4/WasmBoost](https://github.com/Shambhujadhav4/WasmBoost)

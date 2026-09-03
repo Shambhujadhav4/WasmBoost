@@ -32,7 +32,7 @@ flowchart TD
     end
 
     subgraph AzureVM ["☁️ Microsoft Azure VM (Standard_B2als_v2)"]
-        subgraph Gateway ["🚪 Nginx Reverse Proxy (SSL 🔒)"]
+        subgraph Gateway ["🚪 Nginx Reverse Proxy (SSL)"]
             Nginx["Nginx (HTTPS:443 / WSS)"]
         end
 
@@ -43,19 +43,24 @@ flowchart TD
         end
 
         subgraph MLCore ["🧠 Machine Learning & Explainability"]
-            Worker --> Optuna["🎯 Optuna Bayesian Tuning"]
-            Optuna --> Models["🌲 Gradient Boosting (XGBoost / LightGBM / CatBoost)"]
-            Models --> SHAP["🔍 TreeSHAP Feature Interpretability"]
-            Models --> Artifacts["📦 Secure Artifacts (.onnx & .skops)"]
+            Optuna["🎯 Optuna Bayesian Tuning"]
+            Models["🌲 Gradient Boosting (XGBoost / LightGBM / CatBoost)"]
+            SHAP["🔍 TreeSHAP Feature Interpretability"]
+            Artifacts["📦 Secure Artifacts (.onnx & .skops)"]
+
+            Optuna --> Models
+            Models --> SHAP
+            Models --> Artifacts
         end
     end
 
     C -->|HTTPS REST| Nginx
     Nginx --> API
     API -->|Dispatch Task| Redis
-    Redis <--> Worker
-    Worker -.->|Live Telemetry Stream<br/>WebSocket (WSS)| Nginx
-    Nginx -.->|Progress Telemetry| Dashboard
+    Redis --> Worker
+    Worker --> Optuna
+    Worker -.->|"Live Telemetry Stream<br/>WebSocket (WSS)"| Nginx
+    Nginx -.->|"Progress Telemetry"| Dashboard
 ```
 
 ---
