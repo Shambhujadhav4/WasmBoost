@@ -127,8 +127,8 @@ async def train_model(request: TrainRequest) -> TrainTaskResponse:
         try:
             r = redis.Redis.from_url(
                 settings.redis_url,
-                socket_timeout=0.2,
-                socket_connect_timeout=0.2,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
             )
             r.ping()
             redis_available = True
@@ -245,11 +245,11 @@ async def websocket_training_telemetry(websocket: WebSocket, task_id: str) -> No
             redis_client = aioredis.from_url(
                 settings.redis_url,
                 decode_responses=True,
-                socket_timeout=0.5,
-                socket_connect_timeout=0.2,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
             )
             pubsub = redis_client.pubsub()
-            await asyncio.wait_for(pubsub.subscribe(channel_name), timeout=0.3)
+            await asyncio.wait_for(pubsub.subscribe(channel_name), timeout=1.0)
         except Exception as exc:
             logger.info("Redis pubsub not available for WebSocket, using Celery polling fallback: %s", exc)
             pubsub = None

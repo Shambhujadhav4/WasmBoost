@@ -28,8 +28,8 @@ def _get_redis_client() -> redis.Redis | None:
     try:
         r = redis.Redis.from_url(
             settings.redis_url,
-            socket_timeout=0.5,
-            socket_connect_timeout=0.2,
+            socket_timeout=2.0,
+            socket_connect_timeout=2.0,
         )
         r.ping()
         return r

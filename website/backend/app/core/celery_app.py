@@ -7,7 +7,10 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-celery_app = Celery("wasmboost")
+celery_app = Celery(
+    "wasmboost",
+    include=["app.tasks.training"],
+)
 
 celery_app.conf.update(
     broker_url=settings.celery_broker_url,
@@ -22,6 +25,3 @@ celery_app.conf.update(
     task_store_eager_result=True,
     broker_connection_retry_on_startup=True,
 )
-
-# Auto-discover tasks in app.tasks
-celery_app.autodiscover_tasks(["app.tasks.training"])
